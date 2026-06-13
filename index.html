@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowTakt - 番茄钟 · 任务 · 习惯 · 统计</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f9f9f9;
+        }
+        .hero {
+            background: linear-gradient(135deg, #FF6B6B 0%, #EE5A24 100%);
+            color: white;
+            padding: 80px 20px;
+            text-align: center;
+        }
+        .hero h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+        .hero p {
+            font-size: 20px;
+            opacity: 0.9;
+        }
+        .features {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 24px;
+        }
+        .feature-card {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .feature-card h3 {
+            color: #FF6B6B;
+            margin-bottom: 8px;
+            font-size: 18px;
+        }
+        .feature-card p {
+            color: #666;
+            font-size: 14px;
+        }
+        .links {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        .links a {
+            color: #007AFF;
+            margin: 0 15px;
+            text-decoration: none;
+            font-size: 16px;
+        }
+        .links a:hover { text-decoration: underline; }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="hero">
+        <h1>FlowTakt</h1>
+        <p>番茄钟 · 任务管理 · 习惯追踪 · 数据统计</p>
+    </div>
+
+    <div class="features">
+        <div class="feature-card">
+            <h3>🍅 番茄钟专注</h3>
+            <p>自定义专注和休息时长，短休息与长休息交替，白噪音辅助集中注意力。</p>
+        </div>
+        <div class="feature-card">
+            <h3>📋 任务管理</h3>
+            <p>高中低优先级分类，子任务拆分，按状态筛选，设定截止日期。</p>
+        </div>
+        <div class="feature-card">
+            <h3>📅 日程日历</h3>
+            <p>日视图和月视图自由切换，事件颜色编码，支持公历和农历。</p>
+        </div>
+        <div class="feature-card">
+            <h3>🔁 习惯追踪</h3>
+            <p>自定义每日目标，连续打卡追踪，支持每日每周每月频率。</p>
+        </div>
+        <div class="feature-card">
+            <h3>📊 数据统计</h3>
+            <p>每日专注概览，本周趋势分析，任务分解，积分和成就系统。</p>
+        </div>
+        <div class="feature-card">
+            <h3>🔒 隐私安全</h3>
+            <p>数据存储在设备本地，无需注册账号，完全免费，无广告。</p>
+        </div>
+    </div>
+
+    <div class="links">
+        <a href="./privacy.html">隐私政策</a>
+        <a href="./support.html">技术支持</a>
+    </div>
+
+    <div class="footer">
+        <p>&copy; 2026 FlowTakt. All rights reserved. | <a href="https://apps.apple.com">App Store</a></p>
+    </div>
+</body>
+</html>
