@@ -71,7 +71,7 @@ final class HabitViewModel: ObservableObject {
     ) {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
 
-        habitService.createHabit(
+        _ = habitService.createHabit(
             name: name,
             descriptionText: descriptionText,
             iconName: iconName,
@@ -96,7 +96,7 @@ final class HabitViewModel: ObservableObject {
     /// 打卡
     /// - Parameter habit: 要打卡的习惯
     func checkIn(habit: Habit) {
-        habitService.checkIn(habit: habit, count: 1, note: nil)
+        _ = habitService.checkIn(habit: habit, count: 1, note: nil)
         loadHabits()
     }
 

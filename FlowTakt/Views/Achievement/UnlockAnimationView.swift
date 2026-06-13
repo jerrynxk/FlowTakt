@@ -7,6 +7,8 @@ struct UnlockAnimationView: View {
     let achievement: Achievement
     let onDismiss: () -> Void
 
+    @EnvironmentObject var l10n: L10n
+
     @State private var showContent = false
     @State private var starBurst = false
     @State private var scaleUp = false
@@ -58,7 +60,7 @@ struct UnlockAnimationView: View {
             .rotationEffect(.degrees(scaleUp ? 0 : -30))
 
             // 文字
-            Text("🎉 成就解锁！")
+            Text(L10n.shared.成就解锁)
                 .font(.title2.weight(.bold))
                 .foregroundColor(.white)
 

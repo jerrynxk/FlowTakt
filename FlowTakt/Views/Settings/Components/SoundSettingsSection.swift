@@ -1,38 +1,31 @@
 import SwiftUI
 
 struct SoundSettingsSection: View {
+    @EnvironmentObject var l10n: L10n
+
     @ObservedObject var viewModel: SettingsViewModel
 
     var body: some View {
         Section {
             Toggle(isOn: $viewModel.soundEnabled) {
-                Label("音效", systemImage: "speaker.wave.2.fill")
+                Label(L10n.shared.音效, systemImage: "speaker.wave.2.fill")
             }
 
-            Text("专注与休息切换时的提示音")
+            Text(L10n.shared.专注与休息切换时的提示音)
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .padding(.leading, 32)
 
             Toggle(isOn: $viewModel.vibrationEnabled) {
-                Label("震动反馈", systemImage: "iphone.radiowaves.left.and.right")
+                Label(L10n.shared.震动反馈, systemImage: "iphone.radiowaves.left.and.right")
             }
 
-            Text("计时结束时的震动提醒")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.leading, 32)
-
-            Toggle(isOn: $viewModel.whiteNoiseEnabled) {
-                Label("白噪音", systemImage: "wind")
-            }
-
-            Text("专注时播放白噪音帮助集中注意力")
+            Text(L10n.shared.计时结束时的震动提醒)
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .padding(.leading, 32)
         } header: {
-            Text("声音与震动")
+            Text(L10n.shared.声音与震动)
         }
     }
 }

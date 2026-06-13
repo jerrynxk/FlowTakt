@@ -125,7 +125,7 @@ final class HabitService: HabitServiceProtocol {
     }
 
     func recalculateStreak(for habit: Habit) {
-        let records = habit.records ?? []
+        let records = habit.records
         guard !records.isEmpty else {
             habit.currentStreak = 0
             persistenceController.save()
@@ -161,8 +161,9 @@ final class HabitService: HabitServiceProtocol {
         }
 
         var streak: Int16 = 0
+        let maxIterations: Int16 = 10000
 
-        while true {
+        while streak < maxIterations {
             let periodEnd = calendar.date(byAdding: component, value: 1, to: currentPeriodStart)!
                 .addingTimeInterval(-1)
 

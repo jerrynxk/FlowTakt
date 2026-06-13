@@ -26,8 +26,8 @@ final class NotificationService: NotificationServiceProtocol {
 
     func scheduleSessionEndNotification(sessionId: UUID, title: String, timeInterval: TimeInterval) {
         let content = UNMutableNotificationContent()
-        content.title = "专注结束"
-        content.body = "「\(title)」的番茄钟已完成！"
+        content.title = L10n.shared.专注结束
+        content.body = L10n.shared.番茄钟已完成(title)
         content.sound = .default
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: timeInterval, repeats: false)

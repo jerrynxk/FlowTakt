@@ -4,6 +4,7 @@ import SwiftUI
 
 struct TaskBreakdownView: View {
     @EnvironmentObject var taskViewModel: TaskViewModel
+    @EnvironmentObject var l10n: L10n
 
     /// 活跃任务数
     private var activeCount: Int {
@@ -36,7 +37,7 @@ struct TaskBreakdownView: View {
             HStack {
                 Image(systemName: "circle.grid.2x2.fill")
                     .foregroundColor(.focusRed)
-                Text("任务分解")
+                Text(L10n.shared.任务分解)
                     .font(.headline)
                     .foregroundColor(.primary)
                 Spacer()
@@ -74,7 +75,7 @@ struct TaskBreakdownView: View {
                         Text("\(totalCount)")
                             .font(.system(size: 24, weight: .bold, design: .rounded))
                             .foregroundColor(.primary)
-                        Text("任务")
+                        Text(L10n.shared.任务)
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
@@ -85,13 +86,13 @@ struct TaskBreakdownView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     legendRow(
                         color: .breakGreen,
-                        label: "已完成",
+                        label: L10n.shared.已完成,
                         count: completedCount,
                         ratio: completedRatio
                     )
                     legendRow(
                         color: .orange,
-                        label: "活跃",
+                        label: L10n.shared.活跃,
                         count: activeCount,
                         ratio: activeRatio
                     )

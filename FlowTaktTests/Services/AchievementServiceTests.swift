@@ -5,6 +5,7 @@ import CoreData
 // MARK: - AchievementServiceTests
 // 测试 AchievementService：成就获取、积分计算、成就解锁、今日积分
 
+@MainActor
 final class AchievementServiceTests: XCTestCase {
     var persistence: PersistenceController!
     var mockFocusService: MockFocusService!

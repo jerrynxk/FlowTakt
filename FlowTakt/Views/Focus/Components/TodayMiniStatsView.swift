@@ -4,6 +4,7 @@ import SwiftUI
 
 struct TodayMiniStatsView: View {
     @EnvironmentObject var statsViewModel: StatsViewModel
+    @EnvironmentObject var l10n: L10n
 
     var body: some View {
         HStack(spacing: 32) {
@@ -11,7 +12,7 @@ struct TodayMiniStatsView: View {
             statItem(
                 icon: "checkmark.circle.fill",
                 value: "\(statsViewModel.todaySessions.filter { $0.isCompleted }.count)",
-                label: "今日完成",
+                label: L10n.shared.今日完成,
                 color: .focusRed
             )
 
@@ -22,7 +23,7 @@ struct TodayMiniStatsView: View {
             statItem(
                 icon: "star.fill",
                 value: "\(statsViewModel.todaySessions.reduce(0) { $0 + $1.earnedPoints })",
-                label: "今日积分",
+                label: L10n.shared.今日积分,
                 color: .orange
             )
         }

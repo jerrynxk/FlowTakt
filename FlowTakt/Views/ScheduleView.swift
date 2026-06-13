@@ -5,12 +5,19 @@ import SwiftUI
 struct ScheduleView: View {
     @EnvironmentObject var scheduleViewModel: ScheduleViewModel
     @EnvironmentObject var taskViewModel: TaskViewModel
+    @EnvironmentObject var l10n: L10n
 
     @State private var showNewEventSheet = false
     @State private var editingEvent: ScheduleItem? = nil
 
     private let calendar = Calendar.current
-    private let weekdaySymbols = ["一", "二", "三", "四", "五", "六", "日"]
+    private let weekdaySymbols: [String] = {
+        var syms = Calendar.current.veryShortWeekdaySymbols
+        // Shift so Monday is first (system returns Sunday first)
+        let sun = syms.removeFirst()
+        syms.append(sun)
+        return syms
+    }()
 
     var body: some View {
         NavigationStack {
@@ -25,7 +32,7 @@ struct ScheduleView: View {
                 eventList
             }
             .background(Color.appBackground)
-            .navigationTitle("日程")
+            .navigationTitle(L10n.shared.日程)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -125,7 +132,8 @@ struct ScheduleView: View {
 
     private var monthYearText: String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy 年 M 月"
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate("yyyyMMMM")
         return formatter.string(from: scheduleViewModel.currentMonth)
     }
 
@@ -185,13 +193,22 @@ struct ScheduleView: View {
                         .frame(width: 36, height: 36)
                 }
 
-                VStack(spacing: 3) {
+                VStack(spacing: 2) {
                     Text("\(dayNumber)")
                         .font(.system(size: 16, weight: isSelected ? .bold : .regular))
                         .foregroundColor(
                             isSelected ? .white
                             : isCurrentMonth ? .primary
                             : .secondary.opacity(0.4)
+                        )
+
+                    Text(date.lunarCellText)
+                        .font(.system(size: 9))
+                        .lineLimit(1)
+                        .foregroundColor(
+                            isSelected ? .white.opacity(0.8)
+                            : isCurrentMonth ? .secondary
+                            : .secondary.opacity(0.3)
                         )
 
                     if hasEvents {
@@ -300,7 +317,7 @@ struct ScheduleView: View {
                 .font(.system(size: 36))
                 .foregroundColor(.secondary.opacity(0.4))
 
-            Text("当日无日程")
+            Text(L10n.shared.当日无日程)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
@@ -314,17 +331,17 @@ struct ScheduleView: View {
     private var selectedDateText: String {
         let date = scheduleViewModel.selectedDate
         if calendar.isDateInToday(date) {
-            return "今天"
+            return L10n.shared.今日
         }
         if calendar.isDateInTomorrow(date) {
-            return "明天"
+            return L10n.shared.明日
         }
         if calendar.isDateInYesterday(date) {
-            return "昨天"
+            return L10n.shared.昨日
         }
         let formatter = DateFormatter()
-        formatter.dateFormat = "M 月 d 日 EEEE"
-        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate("MMMMdEEEE")
         return formatter.string(from: date)
     }
 
@@ -463,7 +480,7 @@ private struct EventEditView: View {
             Form {
                 // Title
                 Section {
-                    TextField("事件标题", text: $title)
+                    TextField(L10n.shared.事件标题, text: $title)
                         .font(.body)
                         .focused($focusedField, equals: .title)
                         .onAppear {
@@ -474,15 +491,15 @@ private struct EventEditView: View {
                 }
 
                 // Date & Time
-                Section("时间") {
+                Section(L10n.shared.时间) {
                     DatePicker(
-                        "开始",
+                        L10n.shared.开始,
                         selection: $startDate,
                         displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute]
                     )
 
-                    Toggle("结束时间", isOn: $hasEndDate)
-                        .onChange(of: hasEndDate) { _, newValue in
+                    Toggle(L10n.shared.结束时间, isOn: $hasEndDate)
+                        .onChange(of: hasEndDate) { newValue in
                             if !newValue {
                                 // endDate will be nil on save
                             }
@@ -490,13 +507,13 @@ private struct EventEditView: View {
 
                     if hasEndDate {
                         DatePicker(
-                            "结束",
+                            L10n.shared.结束,
                             selection: $endDate,
                             displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute]
                         )
                     }
 
-                    Toggle("全天", isOn: $isAllDay)
+                    Toggle(L10n.shared.全天, isOn: $isAllDay)
                 }
 
                 // Location
@@ -504,17 +521,17 @@ private struct EventEditView: View {
                     HStack {
                         Image(systemName: "mappin")
                             .foregroundColor(.secondary)
-                        TextField("地点", text: $location)
+                        TextField(L10n.shared.地点, text: $location)
                             .focused($focusedField, equals: .location)
                     }
                 }
 
                 // Notes
-                Section("备注") {
+                Section(L10n.shared.备注) {
                     ZStack(alignment: .topLeading) {
                         if notes.isEmpty {
-                            Text("添加备注...")
-                                .foregroundColor(.secondary.opacity(0.6))
+                        Text(L10n.shared.添加备注)
+                            .foregroundColor(.secondary.opacity(0.6))
                                 .padding(.top, 8)
                                 .padding(.leading, 4)
                         }
@@ -525,7 +542,7 @@ private struct EventEditView: View {
                 }
 
                 // Color Picker
-                Section("颜色") {
+                Section(L10n.shared.颜色) {
                     HStack(spacing: 16) {
                         ForEach(ScheduleColor.allCases, id: \.self) { colorOption in
                             Button {
@@ -558,22 +575,23 @@ private struct EventEditView: View {
                     .padding(.vertical, 4)
                 }
             }
-            .navigationTitle(isEditing ? "编辑事件" : "新建事件")
+            .navigationTitle(isEditing ? L10n.shared.编辑事件 : L10n.shared.新建事件)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") {
+                    Button(L10n.shared.取消) {
                         isPresented = false
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
+                    Button(L10n.shared.保存) {
                         save()
                     }
                     .fontWeight(.semibold)
                     .disabled(!isValid)
                 }
             }
+            .environment(\.locale, Locale.current)
         }
     }
 

@@ -4,6 +4,7 @@ import SwiftUI
 
 struct TodayOverviewCard: View {
     @EnvironmentObject var statsViewModel: StatsViewModel
+    @EnvironmentObject var l10n: L10n
 
     /// 今日已完成的番茄钟数
     private var todayCompletedCount: Int {
@@ -21,7 +22,7 @@ struct TodayOverviewCard: View {
             HStack {
                 Image(systemName: "sun.max.fill")
                     .foregroundColor(.focusRed)
-                Text("今日概览")
+                Text(L10n.shared.今日概览)
                     .font(.headline)
                     .foregroundColor(.primary)
                 Spacer()
@@ -39,14 +40,9 @@ struct TodayOverviewCard: View {
                             .font(.system(size: 40, weight: .bold, design: .rounded))
                             .foregroundColor(.focusRed)
 
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.caption)
-                                .foregroundColor(.focusRed)
-                            Text("个番茄钟已完成")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
+                        Text(L10n.shared.todayCompleted(todayCompletedCount))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
 
                     // 专注时长
@@ -66,7 +62,7 @@ struct TodayOverviewCard: View {
                         Image(systemName: "star.fill")
                             .font(.caption)
                             .foregroundColor(.yellow)
-                        Text("+\(todayPoints) 积分")
+                        Text(L10n.shared.todayPoints(todayPoints))
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -98,7 +94,7 @@ struct TodayOverviewCard: View {
                         Text("\(Int(statsViewModel.completionRate * 100))%")
                             .font(.system(size: 20, weight: .bold, design: .rounded))
                             .foregroundColor(.focusRed)
-                        Text("完成率")
+                        Text(L10n.shared.完成率)
                             .font(.system(size: 10))
                             .foregroundColor(.secondary)
                     }

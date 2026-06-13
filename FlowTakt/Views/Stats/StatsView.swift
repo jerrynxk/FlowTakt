@@ -5,6 +5,7 @@ import SwiftUI
 struct StatsView: View {
     @EnvironmentObject var statsViewModel: StatsViewModel
     @EnvironmentObject var taskViewModel: TaskViewModel
+    @EnvironmentObject var l10n: L10n
 
     var body: some View {
         NavigationStack {
@@ -28,7 +29,7 @@ struct StatsView: View {
                 .padding()
             }
             .background(Color.appBackground.ignoresSafeArea())
-            .navigationTitle("统计")
+            .navigationTitle(L10n.shared.统计)
             .refreshable {
                 statsViewModel.refresh()
             }

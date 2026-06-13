@@ -4,12 +4,13 @@ import SwiftUI
 
 struct PointsDisplayView: View {
     @EnvironmentObject var achievementViewModel: AchievementViewModel
+    @EnvironmentObject var l10n: L10n
 
     var body: some View {
         HStack(spacing: 24) {
             // 总积分
             pointsCard(
-                title: "总积分",
+                title: L10n.shared.totalPoints,
                 points: achievementViewModel.totalPoints,
                 icon: "star.fill",
                 color: .yellow
@@ -20,7 +21,7 @@ struct PointsDisplayView: View {
 
             // 今日积分
             pointsCard(
-                title: "今日积分",
+                title: L10n.shared.todayPointsText,
                 points: achievementViewModel.todayPoints,
                 icon: "star.circle.fill",
                 color: .orange
@@ -52,7 +53,6 @@ struct PointsDisplayView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(points)")
                     .font(.system(.title3, design: .rounded).weight(.bold))
-                    .contentTransition(.numericText(value: Double(points)))
                     .animation(.spring(response: 0.3), value: points)
 
                 Text(title)
@@ -62,7 +62,7 @@ struct PointsDisplayView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title) \(points) 分")
+        .accessibilityLabel("\(title) \(points)")
     }
 }
 

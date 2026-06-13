@@ -11,6 +11,7 @@ import CoreData
 // 1. 将本文件加入 FlowTaktTests Target 的 Compile Sources
 // 2. 需同时添加 Helpers/MockServices.swift 到 Compile Sources
 
+@MainActor
 final class FocusViewModelTests: XCTestCase {
     var mockFocusService: MockFocusService!
     var timerManager: TimerManager!
@@ -21,12 +22,12 @@ final class FocusViewModelTests: XCTestCase {
     var mockTaskService: MockTaskService!
     var viewModel: FocusViewModel!
     var cancellables: Set<AnyCancellable>!
+    /// 持久化 controller，确保 CoreData context 在测试期间不释放
+    var persistenceController: MockPersistenceController!
 
     /// 创建并配置一个 Mock FocusSession
     private func makeMockSession(id: UUID = UUID(), status: SessionStatus = .running) -> FocusSession {
-        // 无法直接创建 NSManagedObject 子类实例，使用 MockPersistenceController
-        let mockPersistence = MockPersistenceController()
-        let context = mockPersistence.viewContext
+        let context = persistenceController.viewContext
         let session = FocusSession(context: context)
         session.id = id
         session.startTime = Date()
@@ -43,6 +44,7 @@ final class FocusViewModelTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        persistenceController = MockPersistenceController()
         mockFocusService = MockFocusService()
         timerManager = TimerManager()
         mockNotificationService = MockNotificationService()
@@ -72,6 +74,7 @@ final class FocusViewModelTests: XCTestCase {
         mockAudioService = nil
         mockAchievementService = nil
         mockTaskService = nil
+        persistenceController = nil
         cancellables = nil
         super.tearDown()
     }
@@ -137,8 +140,7 @@ final class FocusViewModelTests: XCTestCase {
 
     func testStartFocus_WithSelectedTask_ThenSessionTaskIsLinked() {
         // Given
-        let mockPersistence = MockPersistenceController()
-        let context = mockPersistence.viewContext
+        let context = persistenceController.viewContext
         let task = Task(context: context)
         task.id = UUID()
         task.title = "关联任务"
@@ -380,8 +382,7 @@ final class FocusViewModelTests: XCTestCase {
 
     func testSelectTask_GivenTask_ThenSelectedTaskUpdated() {
         // Given
-        let mockPersistence = MockPersistenceController()
-        let context = mockPersistence.viewContext
+        let context = persistenceController.viewContext
         let task = Task(context: context)
         task.id = UUID()
         task.title = "测试任务"
@@ -396,8 +397,7 @@ final class FocusViewModelTests: XCTestCase {
 
     func testSelectTask_GivenNil_ThenClearsSelection() {
         // Given
-        let mockPersistence = MockPersistenceController()
-        let context = mockPersistence.viewContext
+        let context = persistenceController.viewContext
         let task = Task(context: context)
         task.id = UUID()
         task.title = "测试任务"

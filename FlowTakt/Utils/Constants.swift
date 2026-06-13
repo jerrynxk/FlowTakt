@@ -54,17 +54,17 @@ enum AppError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .coreDataSaveFailed(let error):
-            return "数据保存失败：\(error.localizedDescription)"
+            return L10n.shared.数据保存失败(error.localizedDescription)
         case .cloudKitSyncFailed(let error):
-            return "iCloud 同步失败：\(error.localizedDescription)"
+            return L10n.shared.iCloud同步失败(error.localizedDescription)
         case .notificationDenied:
-            return "通知权限被拒绝，请在设置中开启"
+            return L10n.shared.通知权限被拒绝
         case .timerInvalid:
-            return "计时器状态异常"
+            return L10n.shared.计时器状态异常
         case .sessionNotFound:
-            return "未找到专注会话"
+            return L10n.shared.未找到专注会话
         case .taskNotFound:
-            return "未找到任务"
+            return L10n.shared.未找到任务
         }
     }
 }

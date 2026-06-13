@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - 开始/暂停按钮
+// MARK: - 开始/暂停按钮组
 
 struct StartButtonView: View {
     @EnvironmentObject var focusViewModel: FocusViewModel
@@ -9,10 +9,40 @@ struct StartButtonView: View {
         Color.forPhase(focusViewModel.activePhase)
     }
 
+    private var isActive: Bool {
+        focusViewModel.timerState == .running || focusViewModel.timerState == .paused
+    }
+
     var body: some View {
-        HStack(spacing: 24) {
-            // 跳过按钮（仅在计时运行或暂停时显示）
-            if focusViewModel.timerState == .running || focusViewModel.timerState == .paused {
+        HStack(spacing: 20) {
+            // 停止按钮（运行或暂停时显示）
+            if isActive {
+                Button(action: {
+                    focusViewModel.abandonSession()
+                }) {
+                    Image(systemName: "stop.fill")
+                        .font(.title2)
+                        .foregroundColor(.focusRed)
+                        .frame(width: 52, height: 52)
+                        .background(Color.focusRed.opacity(0.1))
+                        .clipShape(Circle())
+                }
+                .transition(.opacity.combined(with: .scale))
+            }
+
+            // 主按钮（播放/暂停）
+            Button(action: mainAction) {
+                Image(systemName: mainIcon)
+                    .font(.title)
+                    .foregroundColor(.white)
+                    .frame(width: 72, height: 72)
+                    .background(phaseColor)
+                    .clipShape(Circle())
+                    .shadow(color: phaseColor.opacity(0.4), radius: 8, x: 0, y: 4)
+            }
+
+            // 快进按钮（运行或暂停时显示）
+            if isActive {
                 Button(action: {
                     focusViewModel.skipPhase()
                 }) {
@@ -24,17 +54,6 @@ struct StartButtonView: View {
                         .clipShape(Circle())
                 }
                 .transition(.opacity.combined(with: .scale))
-            }
-
-            // 主按钮
-            Button(action: mainAction) {
-                Image(systemName: mainIcon)
-                    .font(.title)
-                    .foregroundColor(.white)
-                    .frame(width: 72, height: 72)
-                    .background(phaseColor)
-                    .clipShape(Circle())
-                    .shadow(color: phaseColor.opacity(0.4), radius: 8, x: 0, y: 4)
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: focusViewModel.timerState)

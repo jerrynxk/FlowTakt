@@ -1,22 +1,24 @@
 import SwiftUI
 
 struct SyncSettingsSection: View {
+    @EnvironmentObject var l10n: L10n
+
     @ObservedObject var viewModel: SettingsViewModel
     @Binding var showResetAlert: SettingsView.ResetAlertType?
 
     var body: some View {
         Section {
             Toggle(isOn: $viewModel.iCloudSyncEnabled) {
-                Label("iCloud 同步", systemImage: "icloud.fill")
+                Label(L10n.shared.iCloud同步, systemImage: "icloud.fill")
             }
 
             Toggle(isOn: $viewModel.dailyReminderEnabled) {
-                Label("每日提醒", systemImage: "bell.fill")
+                Label(L10n.shared.每日提醒, systemImage: "bell.fill")
             }
 
             if viewModel.dailyReminderEnabled {
                 HStack {
-                    Label("提醒时间", systemImage: "clock")
+                    Label(L10n.shared.提醒时间, systemImage: "clock")
                     Spacer()
                     Text(formattedReminderTime)
                         .foregroundColor(.secondary)
@@ -26,12 +28,12 @@ struct SyncSettingsSection: View {
             Button(role: .destructive) {
                 showResetAlert = .confirm
             } label: {
-                Label("重置数据库", systemImage: "trash.fill")
+                Label(L10n.shared.重置数据库, systemImage: "trash.fill")
             }
         } header: {
-            Text("同步与数据")
+            Text(L10n.shared.同步与数据)
         } footer: {
-            Text("重置数据库将清空所有任务、专注记录、成就和标签数据，此操作无法撤销。")
+            Text(L10n.shared.重置数据库提示)
         }
     }
 

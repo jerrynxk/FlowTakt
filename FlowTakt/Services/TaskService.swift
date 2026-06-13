@@ -18,6 +18,9 @@ protocol TaskServiceProtocol {
 final class TaskService: TaskServiceProtocol {
     private let persistenceController: PersistenceController
 
+    /// 错误回调：供 ViewModel 层监听 Service 内部错误
+    var onError: ((Error) -> Void)?
+
     private var viewContext: NSManagedObjectContext {
         persistenceController.viewContext
     }
@@ -36,7 +39,11 @@ final class TaskService: TaskServiceProtocol {
         task.priority = priority
         task.status = TaskStatus.active.rawValue
         task.dueDate = dueDate
-        task.displayOrder = Int16(max(0, fetchAllTasks().count - 1))
+        // 排除当前未保存的 task（includesPendingChanges=false），获取已持久化的任务数作为 displayOrder
+        let request = Task.fetchRequest()
+        request.includesPendingChanges = false
+        let existingCount = (try? viewContext.count(for: request)) ?? 0
+        task.displayOrder = Int16(existingCount)
         task.createdAt = Date()
         task.updatedAt = Date()
         persistenceController.save()
@@ -70,6 +77,7 @@ final class TaskService: TaskServiceProtocol {
             return try viewContext.fetch(request)
         } catch {
             print("获取任务列表失败：\(error.localizedDescription)")
+            onError?(error)
             return []
         }
     }
@@ -82,6 +90,7 @@ final class TaskService: TaskServiceProtocol {
             return try viewContext.fetch(request)
         } catch {
             print("获取活跃任务失败：\(error.localizedDescription)")
+            onError?(error)
             return []
         }
     }
@@ -94,6 +103,7 @@ final class TaskService: TaskServiceProtocol {
             return try viewContext.fetch(request)
         } catch {
             print("获取已完成任务失败：\(error.localizedDescription)")
+            onError?(error)
             return []
         }
     }

@@ -82,7 +82,7 @@ final class ScheduleViewModel: ObservableObject {
     func createEvent(title: String, startDate: Date, endDate: Date?, isAllDay: Bool, location: String?, notes: String?, colorHex: String?, task: Task?) {
         guard !title.trimmingCharacters(in: .whitespaces).isEmpty else { return }
 
-        scheduleService.createEvent(
+        _ = scheduleService.createEvent(
             title: title,
             startDate: startDate,
             endDate: endDate,

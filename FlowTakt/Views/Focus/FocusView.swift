@@ -7,6 +7,7 @@ struct FocusView: View {
     @EnvironmentObject var taskViewModel: TaskViewModel
     @EnvironmentObject var statsViewModel: StatsViewModel
     @EnvironmentObject var settingsViewModel: SettingsViewModel
+    @EnvironmentObject var l10n: L10n
 
     // MARK: - 进度计算
 
@@ -51,9 +52,10 @@ struct FocusView: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let isCompact = geometry.size.height < 700
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 24) {
-                    Spacer().frame(height: 20)
+                VStack(spacing: isCompact ? 12 : 24) {
+                    Spacer().frame(height: isCompact ? 8 : 20)
 
                     // 阶段标识
                     FocusPhaseBadge()
@@ -62,8 +64,14 @@ struct FocusView: View {
                     // 圆形计时器
                     CircularTimerView(progress: progressValue)
                         .environmentObject(focusViewModel)
-                        .frame(width: min(geometry.size.width - 80, 300),
-                               height: min(geometry.size.width - 80, 300))
+                        .frame(
+                            width: isCompact
+                                ? min(geometry.size.width - 40, 220)
+                                : min(geometry.size.width - 80, 300),
+                            height: isCompact
+                                ? min(geometry.size.width - 40, 220)
+                                : min(geometry.size.width - 80, 300)
+                        )
 
                     // 轮次进度
                     roundProgressView
@@ -81,15 +89,15 @@ struct FocusView: View {
                     // 开始/暂停按钮
                     StartButtonView()
                         .environmentObject(focusViewModel)
-                        .padding(.top, 8)
 
-                    Spacer(minLength: 20)
+                    // 白噪音开关
+                    whiteNoiseToggle
 
                     // 今日迷你统计
                     TodayMiniStatsView()
                         .environmentObject(statsViewModel)
                         .padding(.horizontal, 40)
-                        .padding(.bottom, 16)
+                        .padding(.bottom, 32)
                 }
                 .frame(minHeight: geometry.size.height)
                 .frame(maxWidth: .infinity)
@@ -110,10 +118,34 @@ struct FocusView: View {
                     .frame(width: 10, height: 10)
             }
 
-            Text("第 \(focusViewModel.currentRoundIndex) 轮")
+            Text(L10n.shared.round(focusViewModel.currentRoundIndex))
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .padding(.leading, 4)
+        }
+    }
+
+    // MARK: - 白噪音开关
+
+    private var whiteNoiseToggle: some View {
+        Button {
+            focusViewModel.toggleWhiteNoise()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: focusViewModel.isWhiteNoiseOn ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                    .font(.system(size: 14))
+                Text(focusViewModel.isWhiteNoiseOn ? L10n.shared.白噪音开 : L10n.shared.白噪音关)
+                    .font(.subheadline)
+            }
+            .foregroundColor(focusViewModel.isWhiteNoiseOn ? .focusRed : .secondary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(focusViewModel.isWhiteNoiseOn
+                          ? Color.focusRed.opacity(0.1)
+                          : Color(.systemGray5))
+            )
         }
     }
 }

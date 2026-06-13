@@ -6,7 +6,7 @@ import CoreData
 extension Achievement {
     /// 获得成就后的格式化提示文本
     var unlockMessage: String {
-        "恭喜解锁「\(title)」！"
+        L10n.shared.恭喜解锁(title)
     }
 
     /// 关联的图标系统名称

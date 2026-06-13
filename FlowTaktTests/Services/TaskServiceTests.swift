@@ -5,6 +5,7 @@ import CoreData
 // MARK: - TaskServiceTests
 // 测试 TaskService CRUD 操作、状态切换、查询排序
 
+@MainActor
 final class TaskServiceTests: XCTestCase {
     var persistence: PersistenceController!
     var taskService: TaskService!

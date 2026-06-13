@@ -5,6 +5,7 @@ import CoreData
 // MARK: - FocusServiceTests
 // 测试 FocusService 核心功能：创建会话、完成/中断/放弃会话、查询今日会话、当前会话
 
+@MainActor
 final class FocusServiceTests: XCTestCase {
     var persistence: PersistenceController!
     var notificationService: MockNotificationService!
@@ -371,8 +372,8 @@ final class FocusServiceTests: XCTestCase {
         let mockAchService = MockAchievementService()
 
         // When / Then
-        focusService.setAchievementService(mockAchService)
-        XCTAssertTrue(true, "setAchievementService 不应崩溃")
+        focusService.achievementService = mockAchService
+        XCTAssertNotNil(focusService.achievementService, "AchievementService 应被正确注入")
     }
 
     // ========================================================================

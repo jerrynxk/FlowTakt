@@ -20,8 +20,6 @@ final class MockFocusService: FocusServiceProtocol {
     // Configurable results
     var getCurrentSessionResult: FocusSession?
     var fetchTodaysSessionsResult: [FocusSession] = []
-    var setAchievementServiceCalled = false
-    var lastSetAchievementService: AchievementServiceProtocol?
 
     // MARK: - FocusServiceProtocol
 
@@ -50,11 +48,6 @@ final class MockFocusService: FocusServiceProtocol {
 
     func fetchTodaysSessions() -> [FocusSession] {
         return fetchTodaysSessionsResult
-    }
-
-    func setAchievementService(_ service: AchievementServiceProtocol) {
-        setAchievementServiceCalled = true
-        lastSetAchievementService = service
     }
 }
 
@@ -217,6 +210,7 @@ final class MockAudioService: AudioServiceProtocol {
     var playCompleteSoundCalled = false
     var playAlarmSoundCalled = false
     var toggleWhiteNoiseCalled = false
+    var configureAudioSessionCalled = false
 
     // MARK: - AudioServiceProtocol
 
@@ -235,5 +229,9 @@ final class MockAudioService: AudioServiceProtocol {
     func toggleWhiteNoise() {
         toggleWhiteNoiseCalled = true
         isWhiteNoisePlaying.toggle()
+    }
+
+    func configureAudioSession() {
+        configureAudioSessionCalled = true
     }
 }

@@ -6,6 +6,7 @@ import Combine
 // MARK: - TaskViewModelTests
 // 测试 TaskViewModel 的任务操作
 
+@MainActor
 final class TaskViewModelTests: XCTestCase {
     var persistence: PersistenceController!
     var mockTaskService: MockTaskService!

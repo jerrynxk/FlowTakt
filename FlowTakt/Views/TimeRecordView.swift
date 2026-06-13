@@ -6,6 +6,7 @@ import Combine
 struct TimeRecordView: View {
     @EnvironmentObject var timeRecordViewModel: TimeRecordViewModel
     @EnvironmentObject var taskViewModel: TaskViewModel
+    @EnvironmentObject var l10n: L10n
 
     @State private var selectedTask: Task?
     @State private var elapsedTime: TimeInterval = 0
@@ -61,7 +62,7 @@ struct TimeRecordView: View {
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .background(Color.appBackground)
-            .navigationTitle("计时")
+            .navigationTitle(L10n.shared.计时)
             .navigationBarTitleDisplayMode(.large)
             .onReceive(timer) { _ in
                 updateElapsedTime()
@@ -89,7 +90,7 @@ struct TimeRecordView: View {
                     .foregroundColor(.primary)
                     .padding(.top, 12)
 
-                Text("今日总计")
+                Text(L10n.shared.今日总计)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 8)
@@ -104,12 +105,12 @@ struct TimeRecordView: View {
 
     private var datePickerSection: some View {
         Section {
-            DatePicker(
-                "选择日期",
-                selection: $timeRecordViewModel.selectedDate,
-                in: ...Date(),
-                displayedComponents: .date
-            )
+                DatePicker(
+                    L10n.shared.选择日期,
+                    selection: $timeRecordViewModel.selectedDate,
+                    in: ...Date(),
+                    displayedComponents: .date
+                )
             .datePickerStyle(.compact)
         }
     }
@@ -131,10 +132,10 @@ struct TimeRecordView: View {
     private var recordingIdleView: some View {
         VStack(spacing: 16) {
             // 任务选择器
-            Picker("关联任务", selection: $selectedTask) {
-                Text("无任务").tag(nil as Task?)
+            Picker(L10n.shared.关联任务, selection: $selectedTask) {
+                Text(L10n.shared.无任务).tag(nil as Task?)
                 if availableTasks.isEmpty {
-                    Text("无可用任务").tag(nil as Task?)
+                    Text(L10n.shared.无可用任务).tag(nil as Task?)
                         .foregroundColor(.secondary)
                 } else {
                     ForEach(availableTasks) { task in
@@ -159,7 +160,7 @@ struct TimeRecordView: View {
                     VStack(spacing: 2) {
                         Image(systemName: "play.fill")
                             .font(.title3)
-                        Text("开始计时")
+                        Text(L10n.shared.开始计时)
                             .font(.caption2)
                     }
                     .foregroundColor(.white)
@@ -203,7 +204,7 @@ struct TimeRecordView: View {
                         }
                     }
 
-                Text("正在计时...")
+                Text(L10n.shared.正在计时)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
 
@@ -255,7 +256,7 @@ struct TimeRecordView: View {
                 }
             }
         } header: {
-            Text("记录")
+            Text(L10n.shared.记录)
         }
     }
 
@@ -265,11 +266,11 @@ struct TimeRecordView: View {
                 .font(.system(size: 36))
                 .foregroundColor(.secondary.opacity(0.4))
 
-            Text("暂无记录")
+            Text(L10n.shared.暂无记录)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
-            Text("点击上方按钮开始计时")
+            Text(L10n.shared.点击上方按钮开始计时)
                 .font(.caption)
                 .foregroundColor(.secondary.opacity(0.7))
         }
@@ -316,7 +317,7 @@ private struct TimeRecordRowView: View {
                             .fontWeight(.medium)
                             .lineLimit(1)
                     } else {
-                        Text("无任务")
+                        Text(L10n.shared.无任务)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }

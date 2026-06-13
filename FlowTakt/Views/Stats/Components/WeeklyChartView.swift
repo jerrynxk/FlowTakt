@@ -4,9 +4,10 @@ import SwiftUI
 
 struct WeeklyChartView: View {
     @EnvironmentObject var statsViewModel: StatsViewModel
+    @EnvironmentObject var l10n: L10n
 
     /// 简体中文星期标签
-    private let dayLabels = ["一", "二", "三", "四", "五", "六", "日"]
+    private let dayLabels = [L10n.shared.一, L10n.shared.二, L10n.shared.三, L10n.shared.四, L10n.shared.五, L10n.shared.六, L10n.shared.日]
 
     /// 柱状图最大高度
     private let barMaxHeight: CGFloat = 120
@@ -28,7 +29,7 @@ struct WeeklyChartView: View {
             HStack {
                 Image(systemName: "chart.bar.fill")
                     .foregroundColor(.focusRed)
-                Text("本周趋势")
+                Text(L10n.shared.本周趋势)
                     .font(.headline)
                     .foregroundColor(.primary)
                 Spacer()

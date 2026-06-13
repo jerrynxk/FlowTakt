@@ -3,13 +3,15 @@ import SwiftUI
 // MARK: - TaskFilterBar
 
 struct TaskFilterBar: View {
+    @EnvironmentObject var l10n: L10n
+
     @Binding var selectedPriority: Int16?
 
     private let filters: [(label: String, priority: Int16?)] = [
-        ("全部", nil),
-        ("高优先", 3),
-        ("中优先", 2),
-        ("低优先", 1),
+        (L10n.shared.全部, nil),
+        (L10n.shared.高优先, 3),
+        (L10n.shared.中优先, 2),
+        (L10n.shared.低优先, 1),
     ]
 
     var body: some View {

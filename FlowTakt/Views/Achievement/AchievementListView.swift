@@ -4,6 +4,7 @@ import SwiftUI
 
 struct AchievementListView: View {
     @EnvironmentObject var achievementViewModel: AchievementViewModel
+    @EnvironmentObject var l10n: L10n
     @State private var justUnlockedAchievement: Achievement? = nil
 
     private let columns = [
@@ -45,7 +46,7 @@ struct AchievementListView: View {
                 .padding(.top, 12)
             }
             .background(Color.appBackground.ignoresSafeArea())
-            .navigationTitle("成就")
+            .navigationTitle(L10n.shared.成就)
             .refreshable {
                 achievementViewModel.refresh()
             }
@@ -125,16 +126,7 @@ struct AchievementListView: View {
 
 extension AchievementCategory {
     var displayName: String {
-        switch self {
-        case .streak:
-            return "连续成就"
-        case .total:
-            return "累积成就"
-        case .speed:
-            return "速度成就"
-        case .special:
-            return "特殊成就"
-        }
+        L10n.shared.achievementCategory(self.rawValue)
     }
 }
 

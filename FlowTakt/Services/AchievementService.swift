@@ -17,9 +17,18 @@ final class AchievementService: AchievementServiceProtocol {
     private let persistenceController: PersistenceController
     private weak var focusService: FocusServiceProtocol?
 
+    /// 错误回调：供 ViewModel 层监听 Service 内部错误
+    var onError: ((Error) -> Void)?
+
     private var viewContext: NSManagedObjectContext {
         persistenceController.viewContext
     }
+
+    private lazy var backgroundContext: NSManagedObjectContext = {
+        let ctx = persistenceController.newBackgroundContext()
+        ctx.automaticallyMergesChangesFromParent = true
+        return ctx
+    }()
 
     init(persistenceController: PersistenceController, focusService: FocusServiceProtocol) {
         self.persistenceController = persistenceController
@@ -61,7 +70,6 @@ final class AchievementService: AchievementServiceProtocol {
     }
 
     func fetchAllAchievements() -> [Achievement] {
-        // 如果还没有成就记录，先初始化默认成就列表
         let request = Achievement.fetchRequest()
         request.sortDescriptors = [NSSortDescriptor(keyPath: \Achievement.thresholdValue, ascending: true)]
 
@@ -73,6 +81,7 @@ final class AchievementService: AchievementServiceProtocol {
             return existing
         } catch {
             print("获取成就列表失败：\(error.localizedDescription)")
+            onError?(error)
             return []
         }
     }
@@ -80,12 +89,20 @@ final class AchievementService: AchievementServiceProtocol {
     func getTotalPoints() -> Int {
         let request = FocusSession.fetchRequest()
         request.predicate = NSPredicate(format: "status == %@", SessionStatus.completed.rawValue)
-        do {
-            let sessions = try viewContext.fetch(request)
-            return sessions.reduce(0) { $0 + Int($1.earnedPoints) }
-        } catch {
-            return 0
+
+        var total: Int = 0
+        backgroundContext.performAndWait {
+            do {
+                let sessions = try backgroundContext.fetch(request)
+                total = sessions.reduce(0) { $0 + Int($1.earnedPoints) }
+            } catch {
+                print("获取总积分失败：\(error.localizedDescription)")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onError?(error)
+                }
+            }
         }
+        return total
     }
 
     func getTodaysPoints() -> Int {
@@ -98,22 +115,38 @@ final class AchievementService: AchievementServiceProtocol {
             todayStart as NSDate,
             todayEnd as NSDate
         )
-        do {
-            let sessions = try viewContext.fetch(request)
-            return sessions.reduce(0) { $0 + Int($1.earnedPoints) }
-        } catch {
-            return 0
+
+        var total: Int = 0
+        backgroundContext.performAndWait {
+            do {
+                let sessions = try backgroundContext.fetch(request)
+                total = sessions.reduce(0) { $0 + Int($1.earnedPoints) }
+            } catch {
+                print("获取今日积分失败：\(error.localizedDescription)")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onError?(error)
+                }
+            }
         }
+        return total
     }
 
     func getUnlockedAchievementCount() -> Int {
         let request = Achievement.fetchRequest()
         request.predicate = NSPredicate(format: "isUnlocked == YES")
-        do {
-            return try viewContext.fetch(request).count
-        } catch {
-            return 0
+
+        var count: Int = 0
+        backgroundContext.performAndWait {
+            do {
+                count = try backgroundContext.fetch(request).count
+            } catch {
+                print("获取已解锁成就数失败：\(error.localizedDescription)")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onError?(error)
+                }
+            }
         }
+        return count
     }
 
     // MARK: - 私有方法
@@ -143,6 +176,8 @@ final class AchievementService: AchievementServiceProtocol {
         do {
             return try viewContext.fetch(request)
         } catch {
+            print("获取已完成会话失败：\(error.localizedDescription)")
+            onError?(error)
             return []
         }
     }
@@ -152,31 +187,37 @@ final class AchievementService: AchievementServiceProtocol {
         request.predicate = NSPredicate(format: "status == %@", SessionStatus.completed.rawValue)
         request.sortDescriptors = [NSSortDescriptor(keyPath: \FocusSession.startTime, ascending: false)]
 
-        do {
-            let sessions = try viewContext.fetch(request)
-            guard !sessions.isEmpty else { return 0 }
+        var streak: Int = 0
+        backgroundContext.performAndWait {
+            do {
+                let sessions = try backgroundContext.fetch(request)
+                guard !sessions.isEmpty else { return }
 
-            let calendar = Calendar.current
-            var streak = 0
-            guard let latestSession = sessions.first else { return 0 }
-            var currentDate = calendar.startOfDay(for: latestSession.startTime)
+                let calendar = Calendar.current
+                let maxIterations = 10000
+                guard let latestSession = sessions.first else { return }
+                var currentDate = calendar.startOfDay(for: latestSession.startTime)
 
-            while true {
-                let sessionsOnDate = sessions.filter {
-                    calendar.isDate($0.startTime, inSameDayAs: currentDate)
+                while streak < maxIterations {
+                    let sessionsOnDate = sessions.filter {
+                        calendar.isDate($0.startTime, inSameDayAs: currentDate)
+                    }
+                    if sessionsOnDate.isEmpty {
+                        break
+                    }
+                    streak += 1
+                    guard let previousDay = calendar.date(byAdding: .day, value: -1, to: currentDate) else {
+                        break
+                    }
+                    currentDate = previousDay
                 }
-                if sessionsOnDate.isEmpty {
-                    break
+            } catch {
+                print("获取连续天数失败：\(error.localizedDescription)")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onError?(error)
                 }
-                streak += 1
-                guard let previousDay = calendar.date(byAdding: .day, value: -1, to: currentDate) else {
-                    break
-                }
-                currentDate = previousDay
             }
-            return streak
-        } catch {
-            return 0
         }
+        return streak
     }
 }

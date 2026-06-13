@@ -17,7 +17,7 @@ struct HabitListView: View {
                 }
             }
             .background(Color.appBackground)
-            .navigationTitle("习惯")
+            .navigationTitle(L10n.shared.习惯)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -56,7 +56,7 @@ struct HabitListView: View {
                                 habitViewModel.deleteHabit(habit)
                             }
                         } label: {
-                            Label("删除", systemImage: "trash")
+                            Label(L10n.shared.删除, systemImage: "trash")
                         }
                     }
             }
@@ -75,12 +75,12 @@ struct HabitListView: View {
                 .font(.system(size: 48))
                 .foregroundColor(.secondary.opacity(0.5))
 
-            Text("还没有习惯")
+            Text(L10n.shared.还没有习惯)
                 .font(.title3)
                 .fontWeight(.medium)
                 .foregroundColor(.secondary)
 
-            Text("建立一个小习惯，坚持下去，时间会给你最好的答案")
+            Text(L10n.shared.建立一个小习惯)
                 .font(.subheadline)
                 .foregroundColor(.secondary.opacity(0.7))
                 .multilineTextAlignment(.center)
@@ -89,7 +89,7 @@ struct HabitListView: View {
             Button {
                 showCreateSheet = true
             } label: {
-                Label("创建第一个习惯", systemImage: "plus.circle.fill")
+                Label(L10n.shared.创建第一个习惯, systemImage: "plus.circle.fill")
                     .font(.subheadline)
                     .fontWeight(.semibold)
             }
@@ -107,6 +107,7 @@ struct HabitListView: View {
 
 private struct HabitRowView: View {
     @EnvironmentObject var habitViewModel: HabitViewModel
+    @EnvironmentObject var l10n: L10n
 
     let habit: Habit
 
@@ -194,7 +195,7 @@ private struct HabitRowView: View {
     // MARK: - Progress Label
 
     private var progressLabel: some View {
-        Text("今日 \(todayCount)/\(habit.targetCount)")
+        Text(L10n.shared.habitToday(todayCount, target: habit.targetCount))
     }
 
     // MARK: - Check-in Button
@@ -237,9 +238,9 @@ private struct HabitRowView: View {
 
     private var frequencyText: String {
         switch habit.frequency {
-        case "daily":   return "每天"
-        case "weekly":  return "每周"
-        case "monthly": return "每月"
+        case "daily":   return L10n.shared.每天
+        case "weekly":  return L10n.shared.每周
+        case "monthly": return L10n.shared.每月
         default:        return habit.frequency
         }
     }
@@ -279,10 +280,18 @@ private struct CreateHabitSheetView: View {
 
     private let colorOptions: [ColorOption] = ColorOption.allCases
 
-    enum FrequencyOption: String, CaseIterable {
-        case daily   = "每天"
-        case weekly  = "每周"
-        case monthly = "每月"
+    enum FrequencyOption: CaseIterable {
+        case daily
+        case weekly
+        case monthly
+
+        var displayName: String {
+            switch self {
+            case .daily:   return L10n.shared.每天
+            case .weekly:  return L10n.shared.每周
+            case .monthly: return L10n.shared.每月
+            }
+        }
 
         var apiValue: String {
             switch self {
@@ -325,12 +334,12 @@ private struct CreateHabitSheetView: View {
         NavigationStack {
             Form {
                 // 名称
-                Section("名称") {
-                    TextField("习惯名称", text: $name)
+                Section(L10n.shared.名称) {
+                    TextField(L10n.shared.习惯名称, text: $name)
                 }
 
                 // 图标选择
-                Section("图标") {
+                Section(L10n.shared.图标) {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 6), spacing: 12) {
                         ForEach(icons, id: \.self) { icon in
                             Button {
@@ -353,7 +362,7 @@ private struct CreateHabitSheetView: View {
                 }
 
                 // 颜色选择
-                Section("颜色") {
+                Section(L10n.shared.颜色) {
                     HStack(spacing: 12) {
                         ForEach(colorOptions, id: \.self) { option in
                             Button {
@@ -378,34 +387,34 @@ private struct CreateHabitSheetView: View {
                 }
 
                 // 频率选择
-                Section("频率") {
-                    Picker("频率", selection: $selectedFrequency) {
+                Section(L10n.shared.频率) {
+                    Picker(L10n.shared.频率, selection: $selectedFrequency) {
                         ForEach(FrequencyOption.allCases, id: \.self) { option in
-                            Text(option.rawValue).tag(option)
+                            Text(option.displayName).tag(option)
                         }
                     }
                     .pickerStyle(.segmented)
                 }
 
                 // 目标次数
-                Section("每日目标次数") {
+                Section(L10n.shared.每日目标次数) {
                     Stepper(value: $targetCount, in: 1...99) {
-                        Text("\(targetCount) 次")
+                        Text(L10n.shared.targetCount(targetCount))
                             .fontWeight(.medium)
                     }
                 }
             }
-            .navigationTitle("新建习惯")
+            .navigationTitle(L10n.shared.新建习惯)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") {
+                    Button(L10n.shared.取消) {
                         dismiss()
                     }
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
+                    Button(L10n.shared.保存) {
                         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
                         onSave(
                             name.trimmingCharacters(in: .whitespaces),

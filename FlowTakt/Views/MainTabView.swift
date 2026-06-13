@@ -11,6 +11,7 @@ struct MainTabView: View {
     @EnvironmentObject var scheduleViewModel: ScheduleViewModel
     @EnvironmentObject var habitViewModel: HabitViewModel
     @EnvironmentObject var timeRecordViewModel: TimeRecordViewModel
+    @EnvironmentObject var l10n: L10n
 
     var body: some View {
         TabView {
@@ -21,58 +22,39 @@ struct MainTabView: View {
                 .environmentObject(statsViewModel)
                 .environmentObject(settingsViewModel)
                 .tabItem {
-                    Label("专注", systemImage: "clock.arrow.circlepath")
+                    Label(L10n.shared.focus, systemImage: "clock.arrow.circlepath")
                 }
 
-            // 任务
-            TaskListView()
+            // 计划（任务 + 日历）
+            PlanView()
                 .environmentObject(taskViewModel)
-                .tabItem {
-                    Label("任务", systemImage: "list.bullet")
-                }
-
-            // 日历
-            ScheduleView()
                 .environmentObject(scheduleViewModel)
-                .environmentObject(taskViewModel)
                 .tabItem {
-                    Label("日历", systemImage: "calendar")
+                    Label(L10n.shared.plan, systemImage: "calendar")
                 }
 
-            // 习惯
-            HabitListView()
+            // 习惯（习惯 + 计时）
+            HabitTrackView()
                 .environmentObject(habitViewModel)
-                .tabItem {
-                    Label("习惯", systemImage: "checkmark.circle.fill")
-                }
-
-            // 计时
-            TimeRecordView()
                 .environmentObject(timeRecordViewModel)
                 .environmentObject(taskViewModel)
                 .tabItem {
-                    Label("计时", systemImage: "stopwatch.fill")
+                    Label(L10n.shared.habits, systemImage: "checkmark.circle.fill")
                 }
 
-            // 统计
-            StatsView()
+            // 统计（统计 + 成就）
+            StatsOverviewView()
                 .environmentObject(statsViewModel)
-                .tabItem {
-                    Label("统计", systemImage: "chart.bar.fill")
-                }
-
-            // 成就
-            AchievementListView()
                 .environmentObject(achievementViewModel)
                 .tabItem {
-                    Label("成就", systemImage: "trophy.fill")
+                    Label(L10n.shared.stats, systemImage: "chart.bar.fill")
                 }
 
             // 设置
             SettingsView()
                 .environmentObject(settingsViewModel)
                 .tabItem {
-                    Label("设置", systemImage: "gearshape.fill")
+                    Label(L10n.shared.settings, systemImage: "gearshape.fill")
                 }
         }
         .tint(.focusRed)

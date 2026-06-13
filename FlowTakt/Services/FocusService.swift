@@ -10,7 +10,6 @@ protocol FocusServiceProtocol: AnyObject {
     func abandonSession(_ session: FocusSession)
     func getCurrentSession() -> FocusSession?
     func fetchTodaysSessions() -> [FocusSession]
-    func setAchievementService(_ service: AchievementServiceProtocol)
 }
 
 // MARK: - 专注服务实现
@@ -18,19 +17,21 @@ protocol FocusServiceProtocol: AnyObject {
 final class FocusService: FocusServiceProtocol {
     private let persistenceController: PersistenceController
     private let notificationService: NotificationServiceProtocol
-    private weak var achievementService: AchievementServiceProtocol?
+    weak var achievementService: AchievementServiceProtocol?
+
+    /// 错误回调：供 ViewModel 层监听 Service 内部错误
+    var onError: ((Error) -> Void)?
 
     private var viewContext: NSManagedObjectContext {
         persistenceController.viewContext
     }
 
-    init(persistenceController: PersistenceController, notificationService: NotificationServiceProtocol) {
+    init(persistenceController: PersistenceController,
+         notificationService: NotificationServiceProtocol,
+         achievementService: AchievementServiceProtocol? = nil) {
         self.persistenceController = persistenceController
         self.notificationService = notificationService
-    }
-
-    func setAchievementService(_ service: AchievementServiceProtocol) {
-        self.achievementService = service
+        self.achievementService = achievementService
     }
 
     func startFocusSession(task: Task?, plannedDuration: TimeInterval, phase: FocusPhase, roundIndex: Int16) -> FocusSession {
@@ -110,6 +111,7 @@ final class FocusService: FocusServiceProtocol {
             return try viewContext.fetch(request).first
         } catch {
             print("获取当前会话失败：\(error.localizedDescription)")
+            onError?(error)
             return nil
         }
     }
@@ -125,6 +127,7 @@ final class FocusService: FocusServiceProtocol {
             return try viewContext.fetch(request)
         } catch {
             print("获取今日会话失败：\(error.localizedDescription)")
+            onError?(error)
             return []
         }
     }

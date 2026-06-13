@@ -4,15 +4,16 @@ import SwiftUI
 
 struct FocusPhaseBadge: View {
     @EnvironmentObject var focusViewModel: FocusViewModel
+    @EnvironmentObject var l10n: L10n
 
     private var phaseText: String {
         switch focusViewModel.activePhase {
         case .focus:
-            return "专注"
+            return L10n.shared.focus
         case .shortBreak:
-            return "短休息"
+            return L10n.shared.短休息
         case .longBreak:
-            return "长休息"
+            return L10n.shared.长休息
         }
     }
 

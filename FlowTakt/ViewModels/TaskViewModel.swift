@@ -71,7 +71,7 @@ final class TaskViewModel: ObservableObject {
     func createTask(title: String, notes: String?, estimatedPomodoros: Int16, priority: Int16, dueDate: Date?) {
         guard !title.trimmingCharacters(in: .whitespaces).isEmpty else { return }
 
-        taskService.createTask(
+        _ = taskService.createTask(
             title: title,
             notes: notes,
             estimatedPomodoros: estimatedPomodoros,

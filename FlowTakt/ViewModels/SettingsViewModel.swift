@@ -27,9 +27,6 @@ final class SettingsViewModel: ObservableObject {
     @Published var vibrationEnabled: Bool {
         didSet { UserDefaults.standard.set(vibrationEnabled, forKey: "vibrationEnabled") }
     }
-    @Published var whiteNoiseEnabled: Bool {
-        didSet { UserDefaults.standard.set(whiteNoiseEnabled, forKey: "whiteNoiseEnabled") }
-    }
     @Published var dailyReminderEnabled: Bool {
         didSet {
             UserDefaults.standard.set(dailyReminderEnabled, forKey: "dailyReminderEnabled")
@@ -53,7 +50,16 @@ final class SettingsViewModel: ObservableObject {
     @Published var autoStartFocus: Bool = false {
         didSet { UserDefaults.standard.set(autoStartFocus, forKey: "autoStartFocus") }
     }
+    @Published var appLanguage: String {
+        didSet {
+            UserDefaults.standard.set(appLanguage, forKey: "appLanguage")
+        }
+    }
 
+    let languageOptions = ["zh-Hans", "en"]
+    let languageNames = ["简体中文", "English"]
+
+    @Published var selectedLanguageOption: Int = 0
     @Published var selectedFocusOption: Int = 1
     @Published var selectedShortBreakOption: Int = 1
     @Published var selectedLongBreakOption: Int = 2
@@ -72,16 +78,17 @@ final class SettingsViewModel: ObservableObject {
         longBreakAfterRounds = defaults.integer(forKey: "longBreakAfterRounds").nonZeroElse(AppConstants.longBreakAfterRounds)
         soundEnabled = defaults.object(forKey: "soundEnabled") as? Bool ?? true
         vibrationEnabled = defaults.object(forKey: "vibrationEnabled") as? Bool ?? true
-        whiteNoiseEnabled = defaults.object(forKey: "whiteNoiseEnabled") as? Bool ?? false
         dailyReminderEnabled = defaults.object(forKey: "dailyReminderEnabled") as? Bool ?? false
         iCloudSyncEnabled = defaults.object(forKey: "iCloudSyncEnabled") as? Bool ?? true
         autoStartBreaks = defaults.object(forKey: "autoStartBreaks") as? Bool ?? true
         autoStartFocus = defaults.object(forKey: "autoStartFocus") as? Bool ?? false
+        appLanguage = defaults.string(forKey: "appLanguage") ?? "zh-Hans"
 
         let hour = defaults.integer(forKey: "reminderHour").nonZeroElse(9)
         let minute = defaults.integer(forKey: "reminderMinute")
         dailyReminderTime = DateComponents(hour: hour, minute: minute)
 
+        selectedLanguageOption = languageOptions.firstIndex(of: appLanguage) ?? 0
         selectedFocusOption = focusOptions.firstIndex(of: focusDuration) ?? 1
         selectedShortBreakOption = shortBreakOptions.firstIndex(of: shortBreakDuration) ?? 1
         selectedLongBreakOption = longBreakOptions.firstIndex(of: longBreakDuration) ?? 2
@@ -107,6 +114,13 @@ final class SettingsViewModel: ObservableObject {
         longBreakDuration = longBreakOptions[index]
     }
 
+    func updateLanguage(at index: Int) {
+        guard index < languageOptions.count else { return }
+        selectedLanguageOption = index
+        appLanguage = languageOptions[index]
+        L10n.shared.appLanguage = appLanguage
+    }
+
     func resetToDefaults() {
         focusDuration = AppConstants.defaultFocusDuration
         shortBreakDuration = AppConstants.defaultShortBreakDuration
@@ -114,7 +128,6 @@ final class SettingsViewModel: ObservableObject {
         longBreakAfterRounds = AppConstants.longBreakAfterRounds
         soundEnabled = true
         vibrationEnabled = true
-        whiteNoiseEnabled = false
         dailyReminderEnabled = false
         iCloudSyncEnabled = true
         autoStartBreaks = true
@@ -133,8 +146,8 @@ final class SettingsViewModel: ObservableObject {
 
     private func scheduleDailyReminder() {
         let content = UNMutableNotificationContent()
-        content.title = "今天别忘了专注哦！"
-        content.body = "开启今天的第一个番茄钟，开始高效的一天 🍅"
+        content.title = L10n.shared.每日提醒标题
+        content.body = L10n.shared.每日提醒内容
         content.sound = .default
 
         let trigger = UNCalendarNotificationTrigger(dateMatching: dailyReminderTime, repeats: true)

@@ -7,6 +7,7 @@ struct TaskDetailView: View {
     let task: Task
 
     @EnvironmentObject var taskViewModel: TaskViewModel
+    @EnvironmentObject var l10n: L10n
     @Environment(\.dismiss) var dismiss
 
     @State private var title: String = ""
@@ -18,21 +19,28 @@ struct TaskDetailView: View {
     @State private var showDeleteConfirmation: Bool = false
     @State private var hasChanges: Bool = false
 
-    private let priorityOptions: [(label: String, value: Int16)] = [
-        ("低", 1), ("中", 2), ("高", 3)
-    ]
+    private let priorityValues: [Int16] = [1, 2, 3]
+
+    private func priorityLabel(_ value: Int16) -> String {
+        switch value {
+        case 1: return L10n.shared.低优先
+        case 2: return L10n.shared.中优先
+        case 3: return L10n.shared.高优先
+        default: return ""
+        }
+    }
 
     var body: some View {
         List {
             // MARK: 编辑区域
             Section {
-                TextField("任务标题", text: $title)
+                TextField(L10n.shared.任务标题, text: $title)
                     .font(.body)
                     .onChange(of: title) { _ in hasChanges = true }
 
                 ZStack(alignment: .topLeading) {
                     if notes.isEmpty {
-                        Text("添加备注...")
+                        Text(L10n.shared.添加备注)
                             .foregroundColor(.secondary)
                             .padding(.top, 8)
                             .padding(.leading, 4)
@@ -44,12 +52,12 @@ struct TaskDetailView: View {
             }
 
             // MARK: 番茄钟
-            Section("番茄钟") {
+            Section(L10n.shared.番茄钟) {
                 Stepper(value: $estimatedPomodoros, in: 1...20) {
                     HStack {
                         Image(systemName: "timer")
                             .foregroundColor(.focusRed)
-                        Text("\(estimatedPomodoros) 个番茄钟")
+                        Text(L10n.shared.estimatedPomodoros(Int(estimatedPomodoros)))
                     }
                 }
                 .onChange(of: estimatedPomodoros) { _ in hasChanges = true }
@@ -57,7 +65,7 @@ struct TaskDetailView: View {
                 // 进度条
                 VStack(spacing: 6) {
                     HStack {
-                        Text("进度")
+                        Text(L10n.shared.进度)
                             .foregroundColor(.secondary)
                         Spacer()
                         Text("\(task.completedPomodoros) / \(estimatedPomodoros)")
@@ -85,16 +93,16 @@ struct TaskDetailView: View {
             }
 
             // MARK: 优先级
-            Section("优先级") {
-                Picker("优先级", selection: $priority) {
-                    ForEach(priorityOptions, id: \.value) { option in
+            Section(L10n.shared.优先级) {
+                Picker(L10n.shared.优先级, selection: $priority) {
+                    ForEach(priorityValues, id: \.self) { value in
                         HStack {
                             Circle()
-                                .fill(Color.forPriority(option.value))
+                                .fill(Color.forPriority(value))
                                 .frame(width: 10, height: 10)
-                            Text(option.label)
+                            Text(priorityLabel(value))
                         }
-                        .tag(option.value)
+                        .tag(value)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -102,23 +110,23 @@ struct TaskDetailView: View {
             }
 
             // MARK: 状态
-            Section("状态") {
+            Section(L10n.shared.状态) {
                 HStack {
-                    Text("当前状态")
+                    Text(L10n.shared.当前状态)
                     Spacer()
                     statusBadge
                 }
             }
 
             // MARK: 截止日期
-            Section("截止日期") {
-                Toggle("设置截止日期", isOn: $hasDueDate)
+            Section(L10n.shared.截止日期) {
+                Toggle(L10n.shared.设置截止日期, isOn: $hasDueDate)
                     .tint(.focusRed)
                     .onChange(of: hasDueDate) { _ in hasChanges = true }
 
                 if hasDueDate {
                     DatePicker(
-                        "截止日期",
+                        L10n.shared.截止日期,
                         selection: $dueDate,
                         displayedComponents: .date
                     )
@@ -149,7 +157,7 @@ struct TaskDetailView: View {
                         HStack {
                             Spacer()
                             Image(systemName: "trash")
-                            Text("删除任务")
+                            Text(L10n.shared.删除任务)
                             Spacer()
                         }
                     }
@@ -157,11 +165,11 @@ struct TaskDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("任务详情")
+        .navigationTitle(L10n.shared.任务详情)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("保存") {
+                Button(L10n.shared.保存) {
                     saveChanges()
                 }
                 .fontWeight(.semibold)
@@ -169,12 +177,12 @@ struct TaskDetailView: View {
             }
         }
         .alert("确认删除", isPresented: $showDeleteConfirmation) {
-            Button("取消", role: .cancel) { }
-            Button("删除", role: .destructive) {
+            Button(L10n.shared.取消, role: .cancel) { }
+            Button(L10n.shared.删除, role: .destructive) {
                 deleteTask()
             }
         } message: {
-            Text("确定要删除「\(task.title)」吗？此操作不可撤销。")
+            Text(L10n.shared.deleteConfirm(task.title))
         }
         .onAppear {
             loadTaskValues()
@@ -188,7 +196,7 @@ struct TaskDetailView: View {
             Circle()
                 .fill(task.isCompleted ? Color.green : Color.blue)
                 .frame(width: 8, height: 8)
-            Text(task.isCompleted ? "已完成" : "进行中")
+            Text(task.isCompleted ? L10n.shared.已完成 : L10n.shared.进行中)
                 .font(.subheadline)
                 .fontWeight(.medium)
         }
@@ -238,11 +246,10 @@ struct TaskDetailView: View {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
-        formatter.locale = Locale(identifier: "zh_CN")
         return formatter.string(from: date)
     }
 
-    private func infoRow(label: String, value: String) -> some View {
+    private func infoRow(label: LocalizedStringKey, value: String) -> some View {
         HStack {
             Text(label)
             Spacer()

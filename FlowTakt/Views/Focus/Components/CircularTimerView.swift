@@ -4,6 +4,7 @@ import SwiftUI
 
 struct CircularTimerView: View {
     @EnvironmentObject var focusViewModel: FocusViewModel
+    @EnvironmentObject var l10n: L10n
 
     let progress: Double
 
@@ -33,10 +34,10 @@ struct CircularTimerView: View {
                     .contentTransition(.numericText())
                     .animation(.linear(duration: 0.1), value: focusViewModel.timerDisplay)
 
-                Text(focusViewModel.timerState == .running ? "进行中"
-                     : focusViewModel.timerState == .paused ? "已暂停"
-                     : focusViewModel.timerState == .finished ? "已完成"
-                     : "准备就绪")
+                Text(focusViewModel.timerState == .running ? L10n.shared.进行中
+                     : focusViewModel.timerState == .paused ? L10n.shared.已暂停
+                     : focusViewModel.timerState == .finished ? L10n.shared.已完成
+                     : L10n.shared.准备就绪)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

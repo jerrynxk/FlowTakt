@@ -4,6 +4,7 @@ import SwiftUI
 
 struct InsightCardView: View {
     @EnvironmentObject var statsViewModel: StatsViewModel
+    @EnvironmentObject var l10n: L10n
 
     /// 今日已完成的番茄钟数
     private var todayCompletedCount: Int {
@@ -16,7 +17,7 @@ struct InsightCardView: View {
             HStack {
                 Image(systemName: "lightbulb.fill")
                     .foregroundColor(.focusRed)
-                Text("数据洞察")
+                Text(L10n.shared.数据洞察)
                     .font(.headline)
                     .foregroundColor(.primary)
                 Spacer()
@@ -29,19 +30,19 @@ struct InsightCardView: View {
                 InsightRow(
                     icon: "checkmark.circle.fill",
                     iconColor: .focusRed,
-                    text: "今天已完成 \(todayCompletedCount) 个番茄钟"
+                    text: L10n.shared.todayCompleted(todayCompletedCount)
                 )
 
                 InsightRow(
                     icon: "flame.fill",
                     iconColor: .orange,
-                    text: "最长连续专注 \(statsViewModel.currentStreak) 天"
+                    text: L10n.shared.longestStreak(statsViewModel.currentStreak)
                 )
 
                 InsightRow(
                     icon: "number.circle.fill",
                     iconColor: .breakGreen,
-                    text: "累计完成 \(statsViewModel.totalCompletedPomodoros) 个番茄钟"
+                    text: L10n.shared.totalCompleted(statsViewModel.totalCompletedPomodoros)
                 )
             }
             .padding(16)

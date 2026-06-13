@@ -10,7 +10,7 @@ enum PersistenceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .storeURLNotFound:
-            return "无法获取持久化存储 URL"
+            return L10n.shared.无法获取持久化存储URL
         }
     }
 }

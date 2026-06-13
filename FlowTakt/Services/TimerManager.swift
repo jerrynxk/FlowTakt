@@ -10,7 +10,7 @@ enum TimerState: Equatable {
     case finished
 }
 
-// MARK: - 计时器管理器
+// MARK: - 计时器管理器（支持后台运行）
 
 final class TimerManager: ObservableObject {
     @Published var timeRemaining: TimeInterval = 0
@@ -24,16 +24,13 @@ final class TimerManager: ObservableObject {
 
     /// 开始计时
     func start(duration: TimeInterval) {
+        guard duration > 0 else { return }
         stop()
         totalDuration = duration
         timeRemaining = duration
         timerState = .running
         startDate = Date()
-
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            self?.updateTimer()
-        }
-        RunLoop.main.add(timer!, forMode: .common)
+        scheduleTimer()
     }
 
     /// 暂停计时
@@ -49,12 +46,9 @@ final class TimerManager: ObservableObject {
     func resume() {
         guard timerState == .paused else { return }
         timerState = .running
-        startDate = Date().addingTimeInterval(-(totalDuration - pausedTimeRemaining))
-
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            self?.updateTimer()
-        }
-        RunLoop.main.add(timer!, forMode: .common)
+        let alreadyElapsed = totalDuration - pausedTimeRemaining
+        startDate = Date().addingTimeInterval(-alreadyElapsed)
+        scheduleTimer()
     }
 
     /// 停止计时
@@ -67,6 +61,24 @@ final class TimerManager: ObservableObject {
         timerState = .idle
         startDate = nil
         pausedTimeRemaining = 0
+    }
+
+    // MARK: - 后台支持
+
+    /// 从后台恢复时重新同步（基于 startDate 计算实际剩余时间）
+    func syncFromBackground() {
+        guard timerState == .running, let start = startDate, totalDuration > 0 else { return }
+
+        let elapsed = Date().timeIntervalSince(start)
+        timeRemaining = max(0, totalDuration - elapsed)
+        progress = min(1.0, elapsed / totalDuration)
+
+        if timeRemaining <= 0 {
+            timerState = .finished
+            stop()
+        } else {
+            scheduleTimer()
+        }
     }
 
     /// 当前已消耗时间
@@ -85,6 +97,16 @@ final class TimerManager: ObservableObject {
     func reset() { stop() }
 
     // MARK: - 私有方法
+
+    private func scheduleTimer() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.updateTimer()
+        }
+        if let timer = timer {
+            RunLoop.main.add(timer, forMode: .common)
+        }
+    }
 
     private func updateTimer() {
         guard let startDate = startDate, totalDuration > 0 else { return }

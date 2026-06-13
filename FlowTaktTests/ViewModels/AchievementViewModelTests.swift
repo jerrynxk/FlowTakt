@@ -5,6 +5,7 @@ import Combine
 // MARK: - AchievementViewModelTests
 // 测试 AchievementViewModel：成就列表展示、积分显示、刷新
 
+@MainActor
 final class AchievementViewModelTests: XCTestCase {
     var mockAchievementService: MockAchievementService!
     var viewModel: AchievementViewModel!

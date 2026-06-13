@@ -4,6 +4,7 @@ import SwiftUI
 
 struct TaskCreateView: View {
     @EnvironmentObject var taskViewModel: TaskViewModel
+    @EnvironmentObject var l10n: L10n
     @Environment(\.dismiss) var dismiss
 
     @State private var title: String = ""
@@ -14,21 +15,28 @@ struct TaskCreateView: View {
     @State private var dueDate: Date = Date().addingTimeInterval(86400)
     @State private var isSaving: Bool = false
 
-    private let priorityOptions: [(label: String, value: Int16)] = [
-        ("低", 1), ("中", 2), ("高", 3)
-    ]
+    private let priorityValues: [Int16] = [1, 2, 3]
+
+    private func priorityLabel(_ value: Int16) -> String {
+        switch value {
+        case 1: return L10n.shared.低优先
+        case 2: return L10n.shared.中优先
+        case 3: return L10n.shared.高优先
+        default: return ""
+        }
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 // MARK: 基本信息
                 Section {
-                    TextField("任务标题", text: $title)
+                    TextField(L10n.shared.任务标题, text: $title)
                         .font(.body)
 
                     ZStack(alignment: .topLeading) {
                         if notes.isEmpty {
-                            Text("备注（可选）")
+                            Text(L10n.shared.备注可选)
                                 .foregroundColor(.secondary)
                                 .padding(.top, 8)
                                 .padding(.leading, 4)
@@ -39,40 +47,40 @@ struct TaskCreateView: View {
                 }
 
                 // MARK: 番茄钟设置
-                Section("番茄钟") {
+                Section(L10n.shared.番茄钟) {
                     Stepper(value: $estimatedPomodoros, in: 1...20) {
                         HStack {
                             Image(systemName: "timer")
                                 .foregroundColor(.focusRed)
-                            Text("\(estimatedPomodoros) 个番茄钟")
+                            Text(L10n.shared.estimatedPomodoros(Int(estimatedPomodoros)))
                         }
                     }
                 }
 
                 // MARK: 优先级
-                Section("优先级") {
-                    Picker("优先级", selection: $priority) {
-                        ForEach(priorityOptions, id: \.value) { option in
+                Section(L10n.shared.优先级) {
+                    Picker(L10n.shared.优先级, selection: $priority) {
+                        ForEach(priorityValues, id: \.self) { value in
                             HStack {
                                 Circle()
-                                    .fill(Color.forPriority(option.value))
+                                    .fill(Color.forPriority(value))
                                     .frame(width: 10, height: 10)
-                                Text(option.label)
+                                Text(priorityLabel(value))
                             }
-                            .tag(option.value)
+                            .tag(value)
                         }
                     }
                     .pickerStyle(.segmented)
                 }
 
                 // MARK: 截止日期
-                Section("截止日期") {
-                    Toggle("设置截止日期", isOn: $hasDueDate)
+                Section(L10n.shared.截止日期) {
+                    Toggle(L10n.shared.设置截止日期, isOn: $hasDueDate)
                         .tint(.focusRed)
 
                     if hasDueDate {
                         DatePicker(
-                            "截止日期",
+                            L10n.shared.截止日期,
                             selection: $dueDate,
                             displayedComponents: .date
                         )
@@ -80,18 +88,18 @@ struct TaskCreateView: View {
                     }
                 }
             }
-            .navigationTitle("新建任务")
+            .navigationTitle(L10n.shared.新建任务)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") {
+                    Button(L10n.shared.取消) {
                         dismiss()
                     }
                     .disabled(isSaving)
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
+                    Button(L10n.shared.保存) {
                         saveTask()
                     }
                     .fontWeight(.semibold)

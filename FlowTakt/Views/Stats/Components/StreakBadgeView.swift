@@ -4,6 +4,7 @@ import SwiftUI
 
 struct StreakBadgeView: View {
     @EnvironmentObject var statsViewModel: StatsViewModel
+    @EnvironmentObject var l10n: L10n
 
     /// 是否有连续记录
     private var hasStreak: Bool {
@@ -31,12 +32,12 @@ struct StreakBadgeView: View {
                         .font(.system(size: 36, weight: .bold, design: .rounded))
                         .foregroundColor(hasStreak ? .orange : .gray)
 
-                    Text("天")
+                    Text(L10n.shared.天)
                         .font(.title3)
                         .foregroundColor(hasStreak ? .orange : .gray)
                 }
 
-                Text("连续专注")
+                Text(L10n.shared.连续专注)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }

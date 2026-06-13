@@ -12,6 +12,7 @@ import Combine
 // 1. 将本文件加入 FlowTaktTests Target 的 Compile Sources
 // 2. 确保 @testable import FlowTakt 可用
 
+@MainActor
 final class TimerManagerTests: XCTestCase {
     var timerManager: TimerManager!
     var cancellables: Set<AnyCancellable>!
@@ -263,22 +264,20 @@ final class TimerManagerTests: XCTestCase {
     // MARK: - 边界条件
     // ========================================================================
 
-    func testStart_WithZeroDuration_ThenStateBecomesRunning() {
+    func testStart_WithZeroDuration_ThenStateStaysIdle() {
         // Given
         timerManager.start(duration: 0)
 
         // Then
-        XCTAssertEqual(timerManager.timerState, .running)
-        XCTAssertEqual(timerManager.remainingSeconds, 0)
+        XCTAssertEqual(timerManager.timerState, .idle, "零值 duration 应被 guard 拦截")
     }
 
-    func testStart_WithNegativeDuration_ThenStateBecomesRunning() {
+    func testStart_WithNegativeDuration_ThenStateStaysIdle() {
         // Given
         timerManager.start(duration: -100)
 
         // Then
-        XCTAssertEqual(timerManager.timerState, .running)
-        XCTAssertEqual(timerManager.remainingSeconds, -100, "负值应被接受，由上层逻辑校验")
+        XCTAssertEqual(timerManager.timerState, .idle, "负值 duration 应被 guard 拦截")
     }
 
     func testMultipleStartCalls_AlwaysRestartsWithLatestDuration() {

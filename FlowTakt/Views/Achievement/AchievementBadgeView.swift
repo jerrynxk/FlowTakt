@@ -7,6 +7,7 @@ struct AchievementBadgeView: View {
     let achievement: Achievement
 
     @EnvironmentObject var achievementViewModel: AchievementViewModel
+    @EnvironmentObject var l10n: L10n
 
     private var isUnlocked: Bool { achievement.isUnlocked }
     private var categoryColor: Color { achievement.categoryColor }
@@ -18,14 +19,14 @@ struct AchievementBadgeView: View {
             badgeCircle
 
             // 标题
-            Text(achievement.title)
+            Text(L10n.shared.achievementTitle(achievement.identifier))
                 .font(.caption.weight(.medium))
                 .foregroundColor(isUnlocked ? .primary : .secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
 
             // 描述
-            Text(achievement.descriptionText ?? "")
+            Text(L10n.shared.achievementDesc(achievement.identifier, threshold: Int(achievement.thresholdValue)))
                 .font(.caption2)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
@@ -126,9 +127,9 @@ struct AchievementBadgeView: View {
 
     private var accessibilityLabel: String {
         if isUnlocked {
-            return "\(achievement.title)，已解锁"
+            return "\(achievement.title), \(L10n.shared.unlocked)"
         } else {
-            return "\(achievement.title)，未解锁"
+            return "\(achievement.title), \(L10n.shared.locked)"
         }
     }
 }
@@ -150,16 +151,7 @@ extension Achievement {
     }
 
     var categoryDisplayName: String {
-        switch categoryEnum {
-        case .streak:
-            return "连续成就"
-        case .total:
-            return "累积成就"
-        case .speed:
-            return "速度成就"
-        case .special:
-            return "特殊成就"
-        }
+        L10n.shared.achievementCategory(category)
     }
 
     private var categoryEnum: AchievementCategory {

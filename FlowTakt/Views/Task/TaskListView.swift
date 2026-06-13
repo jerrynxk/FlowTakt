@@ -4,12 +4,20 @@ import SwiftUI
 
 struct TaskListView: View {
     @EnvironmentObject var taskViewModel: TaskViewModel
+    @EnvironmentObject var l10n: L10n
 
     @State private var selectedTab: TaskTab = .active
     @State private var selectedPriority: Int16? = nil
-    enum TaskTab: String, CaseIterable {
-        case active = "已计划"
-        case completed = "已完成"
+    enum TaskTab: CaseIterable {
+        case active
+        case completed
+
+        var displayName: String {
+            switch self {
+            case .active:    return L10n.shared.已计划
+            case .completed: return L10n.shared.已完成
+            }
+        }
     }
 
     var body: some View {
@@ -25,7 +33,7 @@ struct TaskListView: View {
                 taskList
             }
             .background(Color.appBackground)
-            .navigationTitle("任务")
+            .navigationTitle(L10n.shared.任务)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -53,7 +61,7 @@ struct TaskListView: View {
     private var segmentedControl: some View {
         Picker("", selection: $selectedTab) {
             ForEach(TaskTab.allCases, id: \.self) { tab in
-                Text(tab.rawValue).tag(tab)
+                Text(tab.displayName).tag(tab)
             }
         }
         .pickerStyle(.segmented)
@@ -89,13 +97,13 @@ struct TaskListView: View {
                                 }
                                 .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                             }
-                        } header: {
+                        }                         header: {
                             if dateKey == Date.distantPast {
                                 HStack(spacing: 6) {
                                     Image(systemName: "calendar.badge.minus")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
-                                    Text(selectedTab == .active ? "未设定日期" : "未记录时间")
+                                    Text(selectedTab == .active ? L10n.shared.未设定日期 : L10n.shared.未记录时间)
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
                                         .foregroundColor(.primary)
@@ -164,7 +172,7 @@ struct TaskListView: View {
                     taskViewModel.reactivateTask(task)
                 }
             } label: {
-                Label("恢复", systemImage: "arrow.uturn.backward")
+                Label(L10n.shared.恢复, systemImage: "arrow.uturn.backward")
             }
             .tint(.blue)
         } else {
@@ -173,7 +181,7 @@ struct TaskListView: View {
                     taskViewModel.completeTask(task)
                 }
             } label: {
-                Label("完成", systemImage: "checkmark.circle.fill")
+                Label(L10n.shared.完成, systemImage: "checkmark.circle.fill")
             }
             .tint(.green)
         }
@@ -181,13 +189,13 @@ struct TaskListView: View {
 
     @ViewBuilder
     private func trailingSwipeAction(for task: Task) -> some View {
-        Button(role: .destructive) {
-            withAnimation {
-                taskViewModel.deleteTask(task)
-            }
-        } label: {
-            Label("删除", systemImage: "trash")
-        }
+                    Button(role: .destructive) {
+                        withAnimation {
+                            taskViewModel.deleteTask(task)
+                        }
+                    } label: {
+                        Label(L10n.shared.删除, systemImage: "trash")
+                    }
     }
 
     // MARK: - Empty State
@@ -215,7 +223,7 @@ struct TaskListView: View {
                 Button {
                     taskViewModel.showCreateSheet = true
                 } label: {
-                    Label("创建第一个任务", systemImage: "plus.circle.fill")
+                    Label(L10n.shared.创建第一个任务, systemImage: "plus.circle.fill")
                         .font(.subheadline)
                         .fontWeight(.semibold)
                 }
@@ -241,18 +249,18 @@ struct TaskListView: View {
     private var emptyTitle: String {
         switch selectedTab {
         case .active:
-            return "还没有任务"
+            return L10n.shared.noTasks
         case .completed:
-            return "还没有已完成的任务"
+            return L10n.shared.noCompletedTasks
         }
     }
 
     private var emptySubtitle: String {
         switch selectedTab {
         case .active:
-            return "点击下方按钮创建你的第一个任务，开始高效管理时间吧"
+            return L10n.shared.createFirstTask
         case .completed:
-            return "完成的任务会显示在这里，继续加油！"
+            return L10n.shared.completedWillShowHere
         }
     }
 }

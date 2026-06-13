@@ -64,4 +64,42 @@ extension Date {
     var isYesterday: Bool {
         isSameDay(as: Calendar.current.date(byAdding: .day, value: -1, to: Date())!)
     }
+
+    // MARK: - 农历
+
+    /// 农历日名称（如初一、十五、廿三等）
+    var lunarDayText: String {
+        let chineseCalendar = Calendar(identifier: .chinese)
+        let day = chineseCalendar.component(.day, from: self)
+
+        let lunarDayNames = [
+            "初一", "初二", "初三", "初四", "初五", "初六", "初七", "初八", "初九", "初十",
+            "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十",
+            "廿一", "廿二", "廿三", "廿四", "廿五", "廿六", "廿七", "廿八", "廿九", "三十"
+        ]
+
+        guard day >= 1 && day <= 30 else { return "" }
+        return lunarDayNames[day - 1]
+    }
+
+    /// 农历月份名（正月、二月...冬月、腊月）
+    var lunarMonthText: String {
+        let chineseCalendar = Calendar(identifier: .chinese)
+        let month = chineseCalendar.component(.month, from: self)
+
+        let lunarMonths = [
+            "正月", "二月", "三月", "四月", "五月", "六月",
+            "七月", "八月", "九月", "十月", "冬月", "腊月"
+        ]
+
+        guard month >= 1 && month <= 12 else { return "" }
+        return lunarMonths[month - 1]
+    }
+
+    /// 日历格中显示的农历文本（初一显示月份名，其余显示日名）
+    var lunarCellText: String {
+        let chineseCalendar = Calendar(identifier: .chinese)
+        let day = chineseCalendar.component(.day, from: self)
+        return day == 1 ? lunarMonthText : lunarDayText
+    }
 }

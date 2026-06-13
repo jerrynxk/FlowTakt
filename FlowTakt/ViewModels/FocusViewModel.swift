@@ -43,6 +43,7 @@ final class FocusViewModel: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private var durationForPhase: TimeInterval = AppConstants.defaultFocusDuration
+    private var wasWhiteNoiseOnBeforePause = false
 
     // MARK: - 根据阶段获取时长
 
@@ -131,7 +132,7 @@ final class FocusViewModel: ObservableObject {
 
         // 调度专注结束通知
         notificationService.scheduleSessionEndNotification(
-            sessionId: session.id ?? UUID(),
+            sessionId: session.id,
             title: "专注完成",
             timeInterval: durationForPhase
         )
@@ -141,18 +142,36 @@ final class FocusViewModel: ObservableObject {
 
         // 播放开始音效
         audioService.playStartSound()
+
+        // 专注阶段自动开启白噪音（仅在未播放时）
+        if phase == .focus, !audioService.isWhiteNoisePlaying {
+            audioService.toggleWhiteNoise()
+            isWhiteNoiseOn = true
+        }
     }
 
     /// 暂停专注
     func pauseFocus() {
         timerManager.pause()
         timerState = timerManager.timerState
+
+        if isWhiteNoiseOn {
+            audioService.toggleWhiteNoise()
+            isWhiteNoiseOn = false
+            wasWhiteNoiseOnBeforePause = true
+        }
     }
 
     /// 恢复专注
     func resumeFocus() {
         timerManager.resume()
         timerState = timerManager.timerState
+
+        if wasWhiteNoiseOnBeforePause {
+            audioService.toggleWhiteNoise()
+            isWhiteNoiseOn = true
+            wasWhiteNoiseOnBeforePause = false
+        }
     }
 
     /// 跳过当前阶段
@@ -187,15 +206,19 @@ final class FocusViewModel: ObservableObject {
         appBlockerService.stopBlocking()
 
         // 取消待处理的通知
-        if let sessionId = session.id {
-            notificationService.cancelNotification(withIdentifier: sessionId.uuidString)
-        }
+        notificationService.cancelNotification(withIdentifier: session.id.uuidString)
 
         currentSession = nil
         timerState = .idle
         timerDisplay = Self.formatTime(duration(for: activePhase))
+        currentRoundIndex = 1
+        activePhase = .focus
 
-        audioService.playAlarmSound()
+        if isWhiteNoiseOn {
+            audioService.toggleWhiteNoise()
+            isWhiteNoiseOn = false
+        }
+        wasWhiteNoiseOnBeforePause = false
     }
 
     // MARK: - Private Methods
@@ -214,9 +237,7 @@ final class FocusViewModel: ObservableObject {
         audioService.playCompleteSound()
 
         // 取消待处理的通知
-        if let sessionId = session.id {
-            notificationService.cancelNotification(withIdentifier: sessionId.uuidString)
-        }
+        notificationService.cancelNotification(withIdentifier: session.id.uuidString)
 
         // 注意：任务 completedPomodoros 已在 focusService.completeSession() 中递增
         // 这里不再重复调用 taskService.incrementCompletedPomodoros，避免双重计数

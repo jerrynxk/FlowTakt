@@ -57,13 +57,14 @@ final class AppDependency: ObservableObject {
 
         self.taskService = TaskService(persistenceController: persistenceController)
 
-        self.achievementService = AchievementService(
+        let achievementService = AchievementService(
             persistenceController: persistenceController,
             focusService: focusService
         )
+        self.achievementService = achievementService
 
-        // 将 achievementService 注入 FocusService（互相引用的循环依赖通过 weak 解决）
-        focusService.setAchievementService(achievementService)
+        // 解决循环依赖：FocusService 通过 weak 引用持有 AchievementService
+        focusService.achievementService = achievementService
 
         // 初始化 ViewModel 层
         self.focusViewModel = FocusViewModel(

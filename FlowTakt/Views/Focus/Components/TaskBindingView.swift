@@ -5,6 +5,7 @@ import SwiftUI
 struct TaskBindingView: View {
     @EnvironmentObject var focusViewModel: FocusViewModel
     @EnvironmentObject var taskViewModel: TaskViewModel
+    @EnvironmentObject var l10n: L10n
 
     @State private var selectedTaskId: UUID?
 
@@ -21,7 +22,7 @@ struct TaskBindingView: View {
                     focusViewModel.selectedTask = nil
                 }) {
                     HStack {
-                        Text("无关联任务")
+                        Text(L10n.shared.无关联任务)
                         if focusViewModel.selectedTask == nil {
                             Image(systemName: "checkmark")
                         }
@@ -47,10 +48,17 @@ struct TaskBindingView: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Text(focusViewModel.selectedTask?.title ?? "关联任务")
-                        .font(.subheadline)
-                        .lineLimit(1)
-                        .foregroundColor(focusViewModel.selectedTask != nil ? .primary : .secondary)
+                    if let task = focusViewModel.selectedTask {
+                        Text(task.title)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                            .foregroundColor(.primary)
+                    } else {
+                        Text(L10n.shared.关联任务)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                            .foregroundColor(.secondary)
+                    }
 
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption2)
