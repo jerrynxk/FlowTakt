@@ -15,14 +15,6 @@ struct WeeklyChartView: View {
     /// 柱状图最小高度（始终可辨）
     private let barMinHeight: CGFloat = 4
 
-    /// 今日的索引（从周日=0 转为一=0 的偏移）
-    private var todayWeekdayIndex: Int {
-        let weekday = Calendar.current.component(.weekday, from: Date())
-        // weekday: 1=周日, 2=周一 ... 7=周六
-        // 转为: 0=周一, 1=周二 ... 6=周日
-        return (weekday + 5) % 7
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             // 标题
@@ -32,6 +24,7 @@ struct WeeklyChartView: View {
                 Text(L10n.shared.本周趋势)
                     .font(.headline)
                     .foregroundColor(.primary)
+                    .accessibilityHeading(.h2)
                 Spacer()
             }
             .padding(.horizontal, 16)
@@ -46,12 +39,15 @@ struct WeeklyChartView: View {
                         ? CGFloat(dailyStat.completedPomodoros) / CGFloat(maxPomodoros)
                         : 0
                     let barHeight = max(barMinHeight, ratio * barMaxHeight)
+                    // 防御性检查：避免 dayLabels 越界崩溃
+                    let dayLabel = dayLabels.indices.contains(index) ? dayLabels[index] : ""
 
                     VStack(spacing: 6) {
                         // 数值（柱顶）
                         Text("\(dailyStat.completedPomodoros)")
                             .font(.system(size: 11, weight: .medium, design: .rounded))
                             .foregroundColor(isToday ? .focusRed : .secondary)
+                            .accessibilityHidden(true)
 
                         // 柱体
                         RoundedRectangle(cornerRadius: 4)
@@ -70,11 +66,13 @@ struct WeeklyChartView: View {
                             .scaleEffect(isToday ? 1.05 : 1.0)
 
                         // 标签
-                        Text(dayLabels[index])
+                        Text(dayLabel)
                             .font(.system(size: 12, weight: isToday ? .bold : .regular))
                             .foregroundColor(isToday ? .focusRed : .secondary)
                     }
                     .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(dayLabel)：\(dailyStat.completedPomodoros) 个番茄钟")
                 }
             }
             .padding(.horizontal, 12)

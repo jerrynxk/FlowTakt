@@ -46,9 +46,22 @@ struct HabitListView: View {
     // MARK: - Habit List
 
     private var habitList: some View {
-        List {
+        // 预计算每个习惯的今日记录，避免每行重复查询 CoreData（P1-14 性能优化）
+        let todayRecordsByHabit: [UUID: [HabitRecord]] = {
+            var dict: [UUID: [HabitRecord]] = [:]
+            for habit in habitViewModel.habits {
+                let records = habitViewModel.records(for: habit, in: 1).filter { $0.date.isToday }
+                dict[habit.id ?? UUID()] = records
+            }
+            return dict
+        }()
+
+        return List {
             ForEach(habitViewModel.habits) { habit in
-                HabitRowView(habit: habit)
+                HabitRowView(
+                    habit: habit,
+                    todayRecords: todayRecordsByHabit[habit.id ?? UUID()] ?? []
+                )
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
@@ -75,7 +88,7 @@ struct HabitListView: View {
                 .font(.system(size: 48))
                 .foregroundColor(.secondary.opacity(0.5))
 
-            Text(L10n.shared.还没有习惯)
+            Text(L10n.shared.noHabits)
                 .font(.title3)
                 .fontWeight(.medium)
                 .foregroundColor(.secondary)
@@ -110,11 +123,14 @@ private struct HabitRowView: View {
     @EnvironmentObject var l10n: L10n
 
     let habit: Habit
+    /// 预计算的今日记录（避免每次 body 重绘都重新查询 CoreData）
+    let todayRecords: [HabitRecord]
 
     var body: some View {
         HStack(spacing: 12) {
             // 图标
             habitIcon
+                .accessibilityHidden(true)
 
             // 信息区
             VStack(alignment: .leading, spacing: 4) {
@@ -147,6 +163,9 @@ private struct HabitRowView: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(habit.name)
+        .accessibilityValue(L10n.shared.habitToday(todayCount, target: habit.targetCount))
     }
 
     // MARK: - Habit Icon
@@ -180,6 +199,8 @@ private struct HabitRowView: View {
         .padding(.vertical, 2)
         .background(Color.orange.opacity(0.1))
         .cornerRadius(6)
+        .accessibilityLabel(L10n.shared.连续专注)
+        .accessibilityValue("\(habit.currentStreak) \(L10n.shared.天)")
     }
 
     // MARK: - Frequency Label
@@ -205,7 +226,7 @@ private struct HabitRowView: View {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                 if habitViewModel.dayHasRecord(habit: habit, date: Date()) {
                     // 移除打卡
-                    if let todayRecord = todayRecord {
+                    if let todayRecord = todayRecords.first {
                         habitViewModel.removeCheckIn(record: todayRecord)
                     }
                 } else {
@@ -227,6 +248,7 @@ private struct HabitRowView: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(habitViewModel.dayHasRecord(habit: habit, date: Date()) ? L10n.shared.完成 : L10n.shared.计时)
     }
 
     // MARK: - Helpers
@@ -245,191 +267,8 @@ private struct HabitRowView: View {
         }
     }
 
-    private var todayRecords: [HabitRecord] {
-        habitViewModel.records(for: habit, in: 1).filter { $0.date.isToday }
-    }
-
     private var todayCount: Int {
         todayRecords.count
-    }
-
-    /// 获取今天的打卡记录（用于取消打卡）
-    private var todayRecord: HabitRecord? {
-        todayRecords.first
-    }
-}
-
-// MARK: - CreateHabitSheetView
-
-private struct CreateHabitSheetView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    let onSave: (_ name: String, _ iconName: String?, _ colorHex: String?, _ frequency: String, _ targetCount: Int16) -> Void
-
-    @State private var name: String = ""
-    @State private var selectedIcon: String = "star"
-    @State private var selectedColor: ColorOption = .red
-    @State private var selectedFrequency: FrequencyOption = .daily
-    @State private var targetCount: Int = 1
-
-    private let icons: [String] = [
-        "star", "heart", "book", "figure.run",
-        "moon", "drop", "flame", "leaf",
-        "brain", "dumbbell", "cup.and.saucer", "music.note"
-    ]
-
-    private let colorOptions: [ColorOption] = ColorOption.allCases
-
-    enum FrequencyOption: CaseIterable {
-        case daily
-        case weekly
-        case monthly
-
-        var displayName: String {
-            switch self {
-            case .daily:   return L10n.shared.每天
-            case .weekly:  return L10n.shared.每周
-            case .monthly: return L10n.shared.每月
-            }
-        }
-
-        var apiValue: String {
-            switch self {
-            case .daily:   return "daily"
-            case .weekly:  return "weekly"
-            case .monthly: return "monthly"
-            }
-        }
-    }
-
-    enum ColorOption: String, CaseIterable {
-        case red, blue, green, orange, purple, pink, teal
-
-        var color: Color {
-            switch self {
-            case .red:    return .red
-            case .blue:   return .blue
-            case .green:  return .green
-            case .orange: return .orange
-            case .purple: return .purple
-            case .pink:   return .pink
-            case .teal:   return .teal
-            }
-        }
-
-        var hex: String {
-            switch self {
-            case .red:    return "FF3B30"
-            case .blue:   return "007AFF"
-            case .green:  return "34C759"
-            case .orange: return "FF9500"
-            case .purple: return "AF52DE"
-            case .pink:   return "FF2D55"
-            case .teal:   return "5AC8FA"
-            }
-        }
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                // 名称
-                Section(L10n.shared.名称) {
-                    TextField(L10n.shared.习惯名称, text: $name)
-                }
-
-                // 图标选择
-                Section(L10n.shared.图标) {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 6), spacing: 12) {
-                        ForEach(icons, id: \.self) { icon in
-                            Button {
-                                selectedIcon = icon
-                            } label: {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(selectedIcon == icon ? selectedColor.color.opacity(0.2) : Color(.systemGray6))
-                                        .frame(height: 44)
-
-                                    Image(systemName: icon)
-                                        .font(.system(size: 18, weight: .medium))
-                                        .foregroundColor(selectedIcon == icon ? selectedColor.color : .secondary)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-
-                // 颜色选择
-                Section(L10n.shared.颜色) {
-                    HStack(spacing: 12) {
-                        ForEach(colorOptions, id: \.self) { option in
-                            Button {
-                                selectedColor = option
-                            } label: {
-                                ZStack {
-                                    Circle()
-                                        .fill(option.color)
-                                        .frame(width: 32, height: 32)
-
-                                    if selectedColor == option {
-                                        Image(systemName: "checkmark")
-                                            .font(.caption.weight(.bold))
-                                            .foregroundColor(.white)
-                                    }
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-
-                // 频率选择
-                Section(L10n.shared.频率) {
-                    Picker(L10n.shared.频率, selection: $selectedFrequency) {
-                        ForEach(FrequencyOption.allCases, id: \.self) { option in
-                            Text(option.displayName).tag(option)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-
-                // 目标次数
-                Section(L10n.shared.每日目标次数) {
-                    Stepper(value: $targetCount, in: 1...99) {
-                        Text(L10n.shared.targetCount(targetCount))
-                            .fontWeight(.medium)
-                    }
-                }
-            }
-            .navigationTitle(L10n.shared.新建习惯)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.shared.取消) {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(L10n.shared.保存) {
-                        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                        onSave(
-                            name.trimmingCharacters(in: .whitespaces),
-                            selectedIcon,
-                            selectedColor.hex,
-                            selectedFrequency.apiValue,
-                            Int16(targetCount)
-                        )
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-        }
     }
 }
 

@@ -12,6 +12,7 @@ enum TimerState: Equatable {
 
 // MARK: - 计时器管理器（支持后台运行）
 
+@MainActor
 final class TimerManager: ObservableObject {
     @Published var timeRemaining: TimeInterval = 0
     @Published var timerState: TimerState = .idle
@@ -74,8 +75,12 @@ final class TimerManager: ObservableObject {
         progress = min(1.0, elapsed / totalDuration)
 
         if timeRemaining <= 0 {
+            // 先发布 finished 状态供订阅者处理完成回调，再清理（避免立即 stop 导致状态抖动丢失 finished 信号）
             timerState = .finished
-            stop()
+            // 延迟一拍清理，让订阅者能收到 finished 事件
+            DispatchQueue.main.async { [weak self] in
+                self?.stop()
+            }
         } else {
             scheduleTimer()
         }
@@ -100,12 +105,13 @@ final class TimerManager: ObservableObject {
 
     private func scheduleTimer() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        // 使用 Timer(timeInterval:repeats:) 不自动 schedule 的初始化器，
+        // 然后手动添加到 RunLoop 的 .common 模式，避免 scheduledTimer + add 导致重复注册
+        let newTimer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
             self?.updateTimer()
         }
-        if let timer = timer {
-            RunLoop.main.add(timer, forMode: .common)
-        }
+        RunLoop.main.add(newTimer, forMode: .common)
+        timer = newTimer
     }
 
     private func updateTimer() {
@@ -116,8 +122,12 @@ final class TimerManager: ObservableObject {
         progress = min(1.0, elapsed / totalDuration)
 
         if timeRemaining <= 0 {
+            // 先发布 finished 状态，订阅者（FocusViewModel）会处理完成回调
             timerState = .finished
-            stop()
+            // 延迟一拍清理，让订阅者能收到 finished 事件后再清理状态
+            DispatchQueue.main.async { [weak self] in
+                self?.stop()
+            }
         }
     }
 

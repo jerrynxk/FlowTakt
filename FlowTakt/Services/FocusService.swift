@@ -35,100 +35,115 @@ final class FocusService: FocusServiceProtocol {
     }
 
     func startFocusSession(task: Task?, plannedDuration: TimeInterval, phase: FocusPhase, roundIndex: Int16) -> FocusSession {
-        let session = FocusSession(context: viewContext)
-        session.id = UUID()
-        session.startTime = Date()
-        session.plannedDuration = plannedDuration
-        session.phase = phase.rawValue
-        session.roundIndex = roundIndex
-        session.status = SessionStatus.running.rawValue
-        session.earnedPoints = 0
-        session.createdAt = Date()
-        session.updatedAt = Date()
-        session.task = task
+        viewContext.performAndWait {
+            let session = FocusSession(context: viewContext)
+            session.id = UUID()
+            session.startTime = Date()
+            session.plannedDuration = plannedDuration
+            session.phase = phase.rawValue
+            session.roundIndex = roundIndex
+            session.status = SessionStatus.running.rawValue
+            session.earnedPoints = 0
+            session.createdAt = Date()
+            session.updatedAt = Date()
+            session.task = task
 
-        persistenceController.save()
+            persistenceController.save()
 
-        // 安排专注结束通知
-        let taskTitle = task?.title ?? "未命名任务"
-        notificationService.scheduleSessionEndNotification(
-            sessionId: session.id,
-            title: taskTitle,
-            timeInterval: plannedDuration
-        )
+            // 安排专注结束通知
+            let taskTitle = task?.title ?? L10n.shared.无任务
+            notificationService.scheduleSessionEndNotification(
+                sessionId: session.id,
+                title: taskTitle,
+                timeInterval: plannedDuration
+            )
 
-        return session
+            return session
+        }
     }
 
     func completeSession(_ session: FocusSession) {
-        guard session.managedObjectContext != nil else { return }
-        session.endTime = Date()
-        session.actualDuration = Date().timeIntervalSince(session.startTime)
-        session.status = SessionStatus.completed.rawValue
-        session.earnedPoints = Int16(AppConstants.pointsPerCompletedPomodoro)
-        session.updatedAt = Date()
+        viewContext.performAndWait {
+            guard session.managedObjectContext != nil else { return }
+            let now = Date()
+            session.endTime = now
+            session.actualDuration = now.timeIntervalSince(session.startTime)
+            session.status = SessionStatus.completed.rawValue
+            session.earnedPoints = Int16(AppConstants.pointsPerCompletedPomodoro)
+            session.updatedAt = now
 
-        // 更新关联任务的已完成番茄钟数
-        if let task = session.task {
-            task.completedPomodoros += 1
-            task.updatedAt = Date()
+            // 更新关联任务的已完成番茄钟数
+            if let task = session.task {
+                task.completedPomodoros += 1
+                task.updatedAt = now
+            }
+
+            persistenceController.save()
+
+            // 取消通知
+            notificationService.cancelNotification(withIdentifier: session.id.uuidString)
         }
-
-        persistenceController.save()
-
-        // 取消通知
-        notificationService.cancelNotification(withIdentifier: session.id.uuidString)
     }
 
     func interruptSession(_ session: FocusSession) {
-        guard session.managedObjectContext != nil else { return }
-        session.endTime = Date()
-        session.actualDuration = Date().timeIntervalSince(session.startTime)
-        session.status = SessionStatus.interrupted.rawValue
-        session.earnedPoints = 0
-        session.updatedAt = Date()
-        persistenceController.save()
+        viewContext.performAndWait {
+            guard session.managedObjectContext != nil else { return }
+            let now = Date()
+            session.endTime = now
+            session.actualDuration = now.timeIntervalSince(session.startTime)
+            session.status = SessionStatus.interrupted.rawValue
+            session.earnedPoints = 0
+            session.updatedAt = now
+            persistenceController.save()
 
-        notificationService.cancelNotification(withIdentifier: session.id.uuidString)
+            notificationService.cancelNotification(withIdentifier: session.id.uuidString)
+        }
     }
 
     func abandonSession(_ session: FocusSession) {
-        guard session.managedObjectContext != nil else { return }
-        session.status = SessionStatus.abandoned.rawValue
-        session.earnedPoints = Int16(AppConstants.pointsPenaltyPerInterrupt)
-        session.updatedAt = Date()
-        persistenceController.save()
+        viewContext.performAndWait {
+            guard session.managedObjectContext != nil else { return }
+            session.status = SessionStatus.abandoned.rawValue
+            // 使用统一的惩罚积分常量（命名虽为 Interrupt，但语义上 abandon 同样扣分）
+            session.earnedPoints = Int16(AppConstants.pointsPenaltyPerInterrupt)
+            session.updatedAt = Date()
+            persistenceController.save()
 
-        notificationService.cancelNotification(withIdentifier: session.id.uuidString)
+            notificationService.cancelNotification(withIdentifier: session.id.uuidString)
+        }
     }
 
     func getCurrentSession() -> FocusSession? {
-        let request = FocusSession.fetchRequest()
-        request.predicate = NSPredicate(format: "status == %@", SessionStatus.running.rawValue)
-        request.fetchLimit = 1
-        request.sortDescriptors = [NSSortDescriptor(keyPath: \FocusSession.startTime, ascending: false)]
-        do {
-            return try viewContext.fetch(request).first
-        } catch {
-            print("获取当前会话失败：\(error.localizedDescription)")
-            onError?(error)
-            return nil
+        viewContext.performAndWait {
+            let request = FocusSession.fetchRequest()
+            request.predicate = NSPredicate(format: "status == %@", SessionStatus.running.rawValue)
+            request.fetchLimit = 1
+            request.sortDescriptors = [NSSortDescriptor(keyPath: \FocusSession.startTime, ascending: false)]
+            do {
+                return try viewContext.fetch(request).first
+            } catch {
+                print("获取当前会话失败：\(error.localizedDescription)")
+                onError?(error)
+                return nil
+            }
         }
     }
 
     func fetchTodaysSessions() -> [FocusSession] {
-        let request = FocusSession.fetchRequest()
-        let todayStart = Date().startOfDay
-        let todayEnd = Date().endOfDay
-        request.predicate = NSPredicate(format: "startTime >= %@ AND startTime <= %@",
-                                        todayStart as NSDate, todayEnd as NSDate)
-        request.sortDescriptors = [NSSortDescriptor(keyPath: \FocusSession.startTime, ascending: false)]
-        do {
-            return try viewContext.fetch(request)
-        } catch {
-            print("获取今日会话失败：\(error.localizedDescription)")
-            onError?(error)
-            return []
+        viewContext.performAndWait {
+            let request = FocusSession.fetchRequest()
+            let todayStart = Date().startOfDay
+            let todayEnd = Date().endOfDay
+            request.predicate = NSPredicate(format: "startTime >= %@ AND startTime <= %@",
+                                            todayStart as NSDate, todayEnd as NSDate)
+            request.sortDescriptors = [NSSortDescriptor(keyPath: \FocusSession.startTime, ascending: false)]
+            do {
+                return try viewContext.fetch(request)
+            } catch {
+                print("获取今日会话失败：\(error.localizedDescription)")
+                onError?(error)
+                return []
+            }
         }
     }
 }

@@ -11,6 +11,18 @@ struct SyncSettingsSection: View {
             Toggle(isOn: $viewModel.iCloudSyncEnabled) {
                 Label(L10n.shared.iCloud同步, systemImage: "icloud.fill")
             }
+            .onChange(of: viewModel.iCloudSyncEnabled) { newValue in
+                if newValue {
+                    viewModel.forceSync()
+                }
+            }
+
+            // 手动同步按钮
+            Button {
+                viewModel.forceSync()
+            } label: {
+                Label(L10n.shared.立即同步, systemImage: "arrow.triangle.2.circlepath")
+            }
 
             Toggle(isOn: $viewModel.dailyReminderEnabled) {
                 Label(L10n.shared.每日提醒, systemImage: "bell.fill")
@@ -33,7 +45,7 @@ struct SyncSettingsSection: View {
         } header: {
             Text(L10n.shared.同步与数据)
         } footer: {
-            Text(L10n.shared.重置数据库提示)
+            Text(L10n.shared.iCloud同步说明)
         }
     }
 
@@ -47,7 +59,7 @@ struct SyncSettingsSection: View {
 #Preview {
     Form {
         SyncSettingsSection(
-            viewModel: SettingsViewModel(),
+            viewModel: SettingsViewModel(syncService: MockSyncService()),
             showResetAlert: .constant(nil)
         )
     }

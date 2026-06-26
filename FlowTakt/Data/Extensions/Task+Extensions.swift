@@ -7,10 +7,10 @@ extension Task {
     /// 格式化后的优先级文本
     var priorityText: String {
         switch priority {
-        case 3: return "高"
-        case 2: return "中"
-        case 1: return "低"
-        default: return "未知"
+        case 3: return L10n.shared.高优先
+        case 2: return L10n.shared.中优先
+        case 1: return L10n.shared.低优先
+        default: return "—"
         }
     }
 
@@ -51,12 +51,12 @@ extension Task {
     var recurrenceDescription: String? {
         guard isRecurring, let rule = recurrenceRule else { return nil }
         switch rule {
-        case "daily": return "每天"
-        case "weekly": return "每周"
-        case "biweekly": return "每两周"
-        case "monthly": return "每月"
-        case "yearly": return "每年"
-        case "weekday": return "工作日"
+        case "daily": return L10n.shared.每天
+        case "weekly": return L10n.shared.每周
+        case "biweekly": return L10n.shared.每两周
+        case "monthly": return L10n.shared.每月
+        case "yearly": return L10n.shared.每年
+        case "weekday": return L10n.shared.工作日
         default: return rule
         }
     }

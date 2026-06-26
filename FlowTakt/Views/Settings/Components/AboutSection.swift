@@ -26,7 +26,7 @@ struct AboutSection: View {
             HStack {
                 Label(L10n.shared.版本, systemImage: "number")
                 Spacer()
-                Text("1.0")
+                Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
                     .foregroundColor(.secondary)
             }
         } header: {

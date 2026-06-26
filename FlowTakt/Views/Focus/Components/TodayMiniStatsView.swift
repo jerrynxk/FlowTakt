@@ -43,13 +43,15 @@ struct TodayMiniStatsView: View {
                 .font(.title3)
                 .foregroundColor(color)
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .center, spacing: 1) {
                 Text(value)
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(.primary)
+                    .multilineTextAlignment(.center)
                 Text(label)
                     .font(.caption2)
                     .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
             }
         }
     }

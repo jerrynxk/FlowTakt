@@ -80,6 +80,6 @@ struct TimerSettingsSection: View {
 
 #Preview {
     Form {
-        TimerSettingsSection(viewModel: SettingsViewModel())
+        TimerSettingsSection(viewModel: SettingsViewModel(syncService: MockSyncService()))
     }
 }

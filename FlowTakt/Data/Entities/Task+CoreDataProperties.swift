@@ -83,6 +83,38 @@ extension Task {
     @NSManaged public func removeFromSubTasks(_ values: Set<Task>)
 }
 
+// MARK: - Generated accessors for scheduleItems
+extension Task {
+
+    @objc(addScheduleItemsObject:)
+    @NSManaged public func addToScheduleItems(_ value: ScheduleItem)
+
+    @objc(removeScheduleItemsObject:)
+    @NSManaged public func removeFromScheduleItems(_ value: ScheduleItem)
+
+    @objc(addScheduleItems:)
+    @NSManaged public func addToScheduleItems(_ values: Set<ScheduleItem>)
+
+    @objc(removeScheduleItems:)
+    @NSManaged public func removeFromScheduleItems(_ values: Set<ScheduleItem>)
+}
+
+// MARK: - Generated accessors for timeRecords
+extension Task {
+
+    @objc(addTimeRecordsObject:)
+    @NSManaged public func addToTimeRecords(_ value: TimeRecord)
+
+    @objc(removeTimeRecordsObject:)
+    @NSManaged public func removeFromTimeRecords(_ value: TimeRecord)
+
+    @objc(addTimeRecords:)
+    @NSManaged public func addToTimeRecords(_ values: Set<TimeRecord>)
+
+    @objc(removeTimeRecords:)
+    @NSManaged public func removeFromTimeRecords(_ values: Set<TimeRecord>)
+}
+
 extension Task: Identifiable {
 
 }

@@ -31,6 +31,7 @@ struct CircularTimerView: View {
                 Text(focusViewModel.timerDisplay)
                     .font(.system(size: 56, weight: .bold, design: .monospaced))
                     .foregroundColor(.primary)
+                    .multilineTextAlignment(.center)
                     .contentTransition(.numericText())
                     .animation(.linear(duration: 0.1), value: focusViewModel.timerDisplay)
 
@@ -40,7 +41,9 @@ struct CircularTimerView: View {
                      : L10n.shared.准备就绪)
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
             }
+            .frame(maxWidth: .infinity)
         }
     }
 }

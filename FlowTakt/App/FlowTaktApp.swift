@@ -20,6 +20,10 @@ struct FlowTaktApp: App {
                 .environmentObject(dependency.timeRecordViewModel)
                 .environmentObject(l10n)
                 .environment(\.locale, Locale(identifier: l10n.appLanguage))
+                .task {
+                    // 应用首次启动时初始化通知权限和 iCloud 同步
+                    dependency.setupApp()
+                }
         }
         .onChange(of: scenePhase) { newPhase in
             if newPhase == .active {

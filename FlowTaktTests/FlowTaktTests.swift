@@ -8,31 +8,36 @@
 import XCTest
 @testable import FlowTakt
 
+/// AppConstants 基础测试（替换原 Xcode 默认模板）
 final class FlowTaktTests: XCTestCase {
 
-    override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
+    func testAppConstants_defaultDurationsArePositive() {
+        XCTAssertGreaterThan(AppConstants.defaultFocusDuration, 0)
+        XCTAssertGreaterThan(AppConstants.defaultShortBreakDuration, 0)
+        XCTAssertGreaterThan(AppConstants.defaultLongBreakDuration, 0)
     }
 
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
+    func testAppConstants_longBreakAfterRoundsIsPositive() {
+        XCTAssertGreaterThan(AppConstants.longBreakAfterRounds, 0)
     }
 
-    func testExample() throws {
-        // This is an example of a functional test case.
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // Any test you write for XCTest can be annotated as throws and async.
-        // Mark your test throws to produce an unexpected failure when your test encounters an uncaught error.
-        // Mark your test async to allow awaiting for asynchronous code to complete. Check the results with assertions afterwards.
-        // XCTest Documentation
-        // https://developer.apple.com/documentation/xctest
+    func testAppConstants_pointsPerCompletedPomodoroIsPositive() {
+        XCTAssertGreaterThan(AppConstants.pointsPerCompletedPomodoro, 0)
     }
 
-    func testPerformanceExample() throws {
-        // This is an example of a performance test case.
-        self.measure {
-            // Put the code you want to measure the time of here.
-        }
+    func testAppConstants_pointsPenaltyIsNegative() {
+        // 惩罚积分应为负数（业务语义校验）
+        XCTAssertLessThan(AppConstants.pointsPenaltyPerInterrupt, 0)
     }
 
+    func testAppConstants_achievementsAreNotEmpty() {
+        XCTAssertFalse(AppConstants.achievements.isEmpty)
+        // 验证标识符唯一
+        let identifiers = AppConstants.achievements.map(\.identifier)
+        XCTAssertEqual(identifiers.count, Set(identifiers).count, "成就标识符必须唯一")
+    }
+
+    func testAppConstants_cloudKitContainerIdentifier() {
+        XCTAssertEqual(AppConstants.cloudKitContainerIdentifier, "iCloud.com.flowtakt")
+    }
 }

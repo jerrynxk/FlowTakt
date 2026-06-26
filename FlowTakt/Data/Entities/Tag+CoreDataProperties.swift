@@ -14,6 +14,8 @@ extension Tag {
 
     @NSManaged public var tasks: Set<Task>
     @NSManaged public var sessions: Set<FocusSession>
+    /// 标签关联的时间记录（与数据模型 .xcdatamodel 中定义的 timeRecords 关系对应）
+    @NSManaged public var timeRecords: Set<TimeRecord>
 }
 
 // MARK: - Generated accessors for tasks
@@ -46,6 +48,22 @@ extension Tag {
 
     @objc(removeSessions:)
     @NSManaged public func removeFromSessions(_ values: Set<FocusSession>)
+}
+
+// MARK: - Generated accessors for timeRecords
+extension Tag {
+
+    @objc(addTimeRecordsObject:)
+    @NSManaged public func addToTimeRecords(_ value: TimeRecord)
+
+    @objc(removeTimeRecordsObject:)
+    @NSManaged public func removeFromTimeRecords(_ value: TimeRecord)
+
+    @objc(addTimeRecords:)
+    @NSManaged public func addToTimeRecords(_ values: Set<TimeRecord>)
+
+    @objc(removeTimeRecords:)
+    @NSManaged public func removeFromTimeRecords(_ values: Set<TimeRecord>)
 }
 
 extension Tag: Identifiable {

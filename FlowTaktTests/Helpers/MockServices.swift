@@ -9,6 +9,7 @@ import CoreData
 // MARK: - MockFocusService
 
 final class MockFocusService: FocusServiceProtocol {
+    private static let testController = PersistenceController(inMemory: true)
     var sessions: [FocusSession] = []
 
     // Handler closures
@@ -27,7 +28,20 @@ final class MockFocusService: FocusServiceProtocol {
         if let handler = startFocusSessionHandler {
             return handler(task, plannedDuration, phase, roundIndex)
         }
-        fatalError("MockFocusService.startFocusSessionHandler 未设置")
+        // 返回一个默认的 session 实例，而不是 fatalError，避免测试进程崩溃
+        let session = FocusSession(context: Self.testController.viewContext)
+        session.id = UUID()
+        session.startTime = Date()
+        session.plannedDuration = plannedDuration
+        session.phase = phase.rawValue
+        session.roundIndex = roundIndex
+        session.status = SessionStatus.running.rawValue
+        session.earnedPoints = 0
+        session.createdAt = Date()
+        session.updatedAt = Date()
+        session.task = task
+        sessions.append(session)
+        return session
     }
 
     func completeSession(_ session: FocusSession) {
@@ -54,11 +68,12 @@ final class MockFocusService: FocusServiceProtocol {
 // MARK: - MockTaskService
 
 final class MockTaskService: TaskServiceProtocol {
+    private static let testController = PersistenceController(inMemory: true)
     var tasks: [Task] = []
 
-    // Handler closures
-    var createTaskHandler: ((String, String?, Int16, Int16, Date?) -> Task)?
-    var updateTaskHandler: ((Task, String?, String?, Int16?, Int16?, String?, Date?) -> Void)?
+    // Handler closures（签名与真实协议完全一致，包含 recurrenceRule）
+    var createTaskHandler: ((String, String?, Int16, Int16, Date?, String?) -> Task)?
+    var updateTaskHandler: ((Task, String?, String?, Int16?, Int16?, String?, Date?, String?) -> Void)?
     var deleteTaskHandler: ((Task) -> Void)?
     var incrementCompletedPomodorosHandler: ((Task) -> Void)?
 
@@ -67,20 +82,44 @@ final class MockTaskService: TaskServiceProtocol {
     var updateTaskCallCount = 0
     var deleteTaskCallCount = 0
     var incrementCompletedPomodorosCallCount = 0
+    /// 最近一次 createTask 传入的 recurrenceRule（便于测试断言）
+    var lastCreateTaskRecurrenceRule: String?
+    /// 最近一次 updateTask 传入的 recurrenceRule
+    var lastUpdateTaskRecurrenceRule: String?
 
     // MARK: - TaskServiceProtocol
 
-    func createTask(title: String, notes: String?, estimatedPomodoros: Int16, priority: Int16, dueDate: Date?) -> Task {
+    func createTask(title: String, notes: String?, estimatedPomodoros: Int16, priority: Int16, dueDate: Date?, recurrenceRule: String?) -> Task {
         createTaskCallCount += 1
+        lastCreateTaskRecurrenceRule = recurrenceRule
         if let handler = createTaskHandler {
-            return handler(title, notes, estimatedPomodoros, priority, dueDate)
+            return handler(title, notes, estimatedPomodoros, priority, dueDate, recurrenceRule)
         }
-        fatalError("MockTaskService.createTaskHandler 未设置")
+        // 返回一个默认的 task 实例，而不是 fatalError
+        let task = Task(context: Self.testController.viewContext)
+        task.id = UUID()
+        task.title = title
+        task.notes = notes
+        task.estimatedPomodoros = estimatedPomodoros
+        task.completedPomodoros = 0
+        task.priority = priority
+        task.status = TaskStatus.active.rawValue
+        task.dueDate = dueDate
+        if let rule = recurrenceRule, rule != "none" {
+            task.isRecurring = true
+            task.recurrenceRule = rule
+        }
+        task.displayOrder = Int16(tasks.count)
+        task.createdAt = Date()
+        task.updatedAt = Date()
+        tasks.append(task)
+        return task
     }
 
-    func updateTask(_ task: Task, title: String?, notes: String?, estimatedPomodoros: Int16?, priority: Int16?, status: String?, dueDate: Date?) {
+    func updateTask(_ task: Task, title: String?, notes: String?, estimatedPomodoros: Int16?, priority: Int16?, status: String?, dueDate: Date?, recurrenceRule: String?) {
         updateTaskCallCount += 1
-        updateTaskHandler?(task, title, notes, estimatedPomodoros, priority, status, dueDate)
+        lastUpdateTaskRecurrenceRule = recurrenceRule
+        updateTaskHandler?(task, title, notes, estimatedPomodoros, priority, status, dueDate, recurrenceRule)
     }
 
     func deleteTask(_ task: Task) {

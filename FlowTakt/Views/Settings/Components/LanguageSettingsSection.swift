@@ -25,6 +25,6 @@ struct LanguageSettingsSection: View {
 
 #Preview {
     Form {
-        LanguageSettingsSection(viewModel: SettingsViewModel())
+        LanguageSettingsSection(viewModel: SettingsViewModel(syncService: MockSyncService()))
     }
 }

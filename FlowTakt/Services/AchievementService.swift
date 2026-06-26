@@ -15,7 +15,9 @@ protocol AchievementServiceProtocol: AnyObject {
 
 final class AchievementService: AchievementServiceProtocol {
     private let persistenceController: PersistenceController
-    private weak var focusService: FocusServiceProtocol?
+
+    /// Streak 计算最大迭代上限（防止死循环）
+    private static let maxStreakIterations = 10000
 
     /// 错误回调：供 ViewModel 层监听 Service 内部错误
     var onError: ((Error) -> Void)?
@@ -24,49 +26,44 @@ final class AchievementService: AchievementServiceProtocol {
         persistenceController.viewContext
     }
 
-    private lazy var backgroundContext: NSManagedObjectContext = {
-        let ctx = persistenceController.newBackgroundContext()
-        ctx.automaticallyMergesChangesFromParent = true
-        return ctx
-    }()
-
     init(persistenceController: PersistenceController, focusService: FocusServiceProtocol) {
         self.persistenceController = persistenceController
-        self.focusService = focusService
     }
 
     func checkAndUnlockAchievements() {
-        let completedSessions = fetchCompletedSessions()
-        let totalCompleted = completedSessions.count
-        let totalPoints = getTotalPoints()
+        viewContext.performAndWait {
+            let completedSessions = fetchCompletedSessions()
+            let totalCompleted = completedSessions.count
+            let totalPoints = getTotalPoints()
 
-        let allAchievements = fetchAllAchievements()
+            let allAchievements = fetchAllAchievements()
 
-        for achievement in allAchievements where !achievement.isUnlocked {
-            let shouldUnlock: Bool
-            switch achievement.identifier {
-            case _ where achievement.identifier.hasPrefix("first_pomodoro"):
-                shouldUnlock = totalCompleted >= 1
-            case _ where achievement.identifier.hasPrefix("pomodoros_"):
-                let threshold = Int(achievement.thresholdValue)
-                shouldUnlock = totalCompleted >= threshold
-            case _ where achievement.identifier.hasPrefix("streak_"):
-                let threshold = Int(achievement.thresholdValue)
-                shouldUnlock = getCurrentStreak() >= threshold
-            case _ where achievement.identifier.hasPrefix("points_"):
-                let threshold = Int(achievement.thresholdValue)
-                shouldUnlock = totalPoints >= threshold
-            default:
-                shouldUnlock = false
+            for achievement in allAchievements where !achievement.isUnlocked {
+                let shouldUnlock: Bool
+                switch achievement.identifier {
+                case _ where achievement.identifier.hasPrefix("first_pomodoro"):
+                    shouldUnlock = totalCompleted >= 1
+                case _ where achievement.identifier.hasPrefix("pomodoros_"):
+                    let threshold = Int(achievement.thresholdValue)
+                    shouldUnlock = totalCompleted >= threshold
+                case _ where achievement.identifier.hasPrefix("streak_"):
+                    let threshold = Int(achievement.thresholdValue)
+                    shouldUnlock = getCurrentStreak() >= threshold
+                case _ where achievement.identifier.hasPrefix("points_"):
+                    let threshold = Int(achievement.thresholdValue)
+                    shouldUnlock = totalPoints >= threshold
+                default:
+                    shouldUnlock = false
+                }
+
+                if shouldUnlock {
+                    achievement.isUnlocked = true
+                    achievement.unlockedAt = Date()
+                }
             }
 
-            if shouldUnlock {
-                achievement.isUnlocked = true
-                achievement.unlockedAt = Date()
-            }
+            persistenceController.save()
         }
-
-        persistenceController.save()
     }
 
     func fetchAllAchievements() -> [Achievement] {
@@ -90,19 +87,14 @@ final class AchievementService: AchievementServiceProtocol {
         let request = FocusSession.fetchRequest()
         request.predicate = NSPredicate(format: "status == %@", SessionStatus.completed.rawValue)
 
-        var total: Int = 0
-        backgroundContext.performAndWait {
-            do {
-                let sessions = try backgroundContext.fetch(request)
-                total = sessions.reduce(0) { $0 + Int($1.earnedPoints) }
-            } catch {
-                print("获取总积分失败：\(error.localizedDescription)")
-                DispatchQueue.main.async { [weak self] in
-                    self?.onError?(error)
-                }
-            }
+        do {
+            let sessions = try viewContext.fetch(request)
+            return sessions.reduce(0) { $0 + Int($1.earnedPoints) }
+        } catch {
+            print("获取总积分失败：\(error.localizedDescription)")
+            onError?(error)
+            return 0
         }
-        return total
     }
 
     func getTodaysPoints() -> Int {
@@ -116,57 +108,49 @@ final class AchievementService: AchievementServiceProtocol {
             todayEnd as NSDate
         )
 
-        var total: Int = 0
-        backgroundContext.performAndWait {
-            do {
-                let sessions = try backgroundContext.fetch(request)
-                total = sessions.reduce(0) { $0 + Int($1.earnedPoints) }
-            } catch {
-                print("获取今日积分失败：\(error.localizedDescription)")
-                DispatchQueue.main.async { [weak self] in
-                    self?.onError?(error)
-                }
-            }
+        do {
+            let sessions = try viewContext.fetch(request)
+            return sessions.reduce(0) { $0 + Int($1.earnedPoints) }
+        } catch {
+            print("获取今日积分失败：\(error.localizedDescription)")
+            onError?(error)
+            return 0
         }
-        return total
     }
 
     func getUnlockedAchievementCount() -> Int {
         let request = Achievement.fetchRequest()
         request.predicate = NSPredicate(format: "isUnlocked == YES")
 
-        var count: Int = 0
-        backgroundContext.performAndWait {
-            do {
-                count = try backgroundContext.fetch(request).count
-            } catch {
-                print("获取已解锁成就数失败：\(error.localizedDescription)")
-                DispatchQueue.main.async { [weak self] in
-                    self?.onError?(error)
-                }
-            }
+        do {
+            return try viewContext.fetch(request).count
+        } catch {
+            print("获取已解锁成就数失败：\(error.localizedDescription)")
+            onError?(error)
+            return 0
         }
-        return count
     }
 
     // MARK: - 私有方法
 
     private func createDefaultAchievements() -> [Achievement] {
         var achievements: [Achievement] = []
-        for info in AppConstants.achievements {
-            let achievement = Achievement(context: viewContext)
-            achievement.id = UUID()
-            achievement.identifier = info.identifier
-            achievement.title = info.title
-            achievement.descriptionText = info.description
-            achievement.iconName = info.iconName
-            achievement.category = info.category.rawValue
-            achievement.thresholdValue = Int16(info.threshold)
-            achievement.isUnlocked = false
-            achievement.createdAt = Date()
-            achievements.append(achievement)
+        viewContext.performAndWait {
+            for info in AppConstants.achievements {
+                let achievement = Achievement(context: viewContext)
+                achievement.id = UUID()
+                achievement.identifier = info.identifier
+                achievement.title = info.title
+                achievement.descriptionText = info.description
+                achievement.iconName = info.iconName
+                achievement.category = info.category.rawValue
+                achievement.thresholdValue = Int16(info.threshold)
+                achievement.isUnlocked = false
+                achievement.createdAt = Date()
+                achievements.append(achievement)
+            }
+            persistenceController.save()
         }
-        persistenceController.save()
         return achievements
     }
 
@@ -182,42 +166,55 @@ final class AchievementService: AchievementServiceProtocol {
         }
     }
 
+    /// 计算连续打卡天数：从最近一次完成会话向前倒推，逐日检查。
+    /// 优化：按天分组后再判断，避免 O(streak×n) 的双重循环。
     private func getCurrentStreak() -> Int {
         let request = FocusSession.fetchRequest()
         request.predicate = NSPredicate(format: "status == %@", SessionStatus.completed.rawValue)
         request.sortDescriptors = [NSSortDescriptor(keyPath: \FocusSession.startTime, ascending: false)]
 
-        var streak: Int = 0
-        backgroundContext.performAndWait {
-            do {
-                let sessions = try backgroundContext.fetch(request)
-                guard !sessions.isEmpty else { return }
+        do {
+            let sessions = try viewContext.fetch(request)
+            guard !sessions.isEmpty else { return 0 }
 
-                let calendar = Calendar.current
-                let maxIterations = 10000
-                guard let latestSession = sessions.first else { return }
-                var currentDate = calendar.startOfDay(for: latestSession.startTime)
+            let calendar = Calendar.current
+            // 按天分组：[startOfDay: 非空]
+            var daySet = Set<Date>()
+            for session in sessions {
+                daySet.insert(calendar.startOfDay(for: session.startTime))
+            }
 
-                while streak < maxIterations {
-                    let sessionsOnDate = sessions.filter {
-                        calendar.isDate($0.startTime, inSameDayAs: currentDate)
-                    }
-                    if sessionsOnDate.isEmpty {
-                        break
-                    }
+            // 如果今天没有任何会话，streak 从昨天开始倒推（今天未打卡不中断昨天的连续记录）
+            let today = calendar.startOfDay(for: Date())
+            var streak = 0
+            var currentDate: Date
+            if daySet.contains(today) {
+                currentDate = today
+            } else if let yesterday = calendar.date(byAdding: .day, value: -1, to: today),
+                      daySet.contains(yesterday) {
+                // 今天还没打卡，但昨天有 → streak 从昨天开始计算
+                currentDate = yesterday
+            } else {
+                return 0
+            }
+
+            let maxIterations = Self.maxStreakIterations
+            while streak < maxIterations {
+                if daySet.contains(currentDate) {
                     streak += 1
                     guard let previousDay = calendar.date(byAdding: .day, value: -1, to: currentDate) else {
                         break
                     }
                     currentDate = previousDay
-                }
-            } catch {
-                print("获取连续天数失败：\(error.localizedDescription)")
-                DispatchQueue.main.async { [weak self] in
-                    self?.onError?(error)
+                } else {
+                    break
                 }
             }
+            return streak
+        } catch {
+            print("获取连续天数失败：\(error.localizedDescription)")
+            onError?(error)
+            return 0
         }
-        return streak
     }
 }

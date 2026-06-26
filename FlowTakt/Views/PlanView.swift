@@ -46,6 +46,7 @@ struct PlanView: View {
             persistenceController: .shared
         ))
         .environmentObject(ScheduleViewModel(
-            scheduleService: ScheduleService(persistenceController: .shared)
+            scheduleService: ScheduleService(persistenceController: .shared),
+            persistenceController: .shared
         ))
 }

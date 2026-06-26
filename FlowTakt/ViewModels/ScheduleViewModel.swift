@@ -8,6 +8,7 @@ final class ScheduleViewModel: ObservableObject {
     // MARK: - Dependencies
 
     private let scheduleService: ScheduleServiceProtocol
+    private let persistenceController: PersistenceController
 
     // MARK: - Published Properties
 
@@ -24,8 +25,9 @@ final class ScheduleViewModel: ObservableObject {
 
     // MARK: - Init
 
-    init(scheduleService: ScheduleServiceProtocol) {
+    init(scheduleService: ScheduleServiceProtocol, persistenceController: PersistenceController) {
         self.scheduleService = scheduleService
+        self.persistenceController = persistenceController
 
         // 初始化时加载当月事件
         refreshForMonth(currentMonth)
@@ -33,7 +35,7 @@ final class ScheduleViewModel: ObservableObject {
         // 监听 CoreData 上下文变化，自动刷新
         NotificationCenter.default.publisher(
             for: .NSManagedObjectContextObjectsDidChange,
-            object: nil
+            object: persistenceController.viewContext
         )
         .receive(on: DispatchQueue.main)
         .sink { [weak self] _ in
@@ -41,6 +43,27 @@ final class ScheduleViewModel: ObservableObject {
             self.refreshForMonth(self.currentMonth)
         }
         .store(in: &cancellables)
+
+        // 监听数据库重置通知，立即清空旧 ManagedObject 引用防止崩溃
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDatabaseReset),
+            name: .databaseDidReset,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Private
+
+    @objc private func handleDatabaseReset() {
+        events = []
+        DispatchQueue.main.async { [weak self] in
+            self?.refreshForMonth(self?.currentMonth ?? Date())
+        }
     }
 
     // MARK: - Public Methods

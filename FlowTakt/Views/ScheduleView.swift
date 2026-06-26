@@ -19,6 +19,21 @@ struct ScheduleView: View {
         return syms
     }()
 
+    // 缓存 DateFormatter 实例（避免 body 重绘时重复创建）
+    private static let monthYearFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate("yyyyMMMM")
+        return formatter
+    }()
+
+    private static let selectedDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate("MMMMdEEEE")
+        return formatter
+    }()
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -42,6 +57,7 @@ struct ScheduleView: View {
                         Image(systemName: "plus")
                             .fontWeight(.semibold)
                     }
+                    .accessibilityLabel(L10n.shared.新建事件)
                 }
             }
             .sheet(isPresented: $showNewEventSheet) {
@@ -94,7 +110,9 @@ struct ScheduleView: View {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     if let prevMonth = calendar.date(byAdding: .month, value: -1, to: scheduleViewModel.currentMonth) {
                         scheduleViewModel.refreshForMonth(prevMonth)
-                        scheduleViewModel.refreshForDate(scheduleViewModel.selectedDate)
+                        // 切月后，如果 selectedDate 不在新月份内，自动调整到新月份的 1 号
+                        let adjusted = adjustSelectedDate(to: prevMonth)
+                        scheduleViewModel.refreshForDate(adjusted)
                     }
                 }
             } label: {
@@ -103,12 +121,21 @@ struct ScheduleView: View {
                     .fontWeight(.semibold)
                     .foregroundColor(.focusRed)
             }
+            .accessibilityLabel(L10n.shared.上一月)
 
             Spacer()
 
-            Text(monthYearText)
-                .font(.title2)
-                .fontWeight(.bold)
+            VStack(spacing: 2) {
+                Text(monthYearText)
+                    .font(.title2)
+                    .fontWeight(.bold)
+
+                if let lunarText = LunarCalendar.lunarDateString(from: scheduleViewModel.currentMonth) {
+                    Text(lunarText)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
 
             Spacer()
 
@@ -116,7 +143,8 @@ struct ScheduleView: View {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     if let nextMonth = calendar.date(byAdding: .month, value: 1, to: scheduleViewModel.currentMonth) {
                         scheduleViewModel.refreshForMonth(nextMonth)
-                        scheduleViewModel.refreshForDate(scheduleViewModel.selectedDate)
+                        let adjusted = adjustSelectedDate(to: nextMonth)
+                        scheduleViewModel.refreshForDate(adjusted)
                     }
                 }
             } label: {
@@ -125,16 +153,24 @@ struct ScheduleView: View {
                     .fontWeight(.semibold)
                     .foregroundColor(.focusRed)
             }
+            .accessibilityLabel(L10n.shared.下一月)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
     }
 
+    /// 调整 selectedDate 到目标月份（若 selectedDate 不在目标月份内）
+    private func adjustSelectedDate(to month: Date) -> Date {
+        if calendar.isDate(scheduleViewModel.selectedDate, equalTo: month, toGranularity: .month) {
+            return scheduleViewModel.selectedDate
+        }
+        // 切到新月份，默认选中该月 1 号
+        let components = calendar.dateComponents([.year, .month], from: month)
+        return calendar.date(from: components) ?? month
+    }
+
     private var monthYearText: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.setLocalizedDateFormatFromTemplate("yyyyMMMM")
-        return formatter.string(from: scheduleViewModel.currentMonth)
+        Self.monthYearFormatter.string(from: scheduleViewModel.currentMonth)
     }
 
     // MARK: - Weekday Header
@@ -157,11 +193,13 @@ struct ScheduleView: View {
 
     private var calendarGrid: some View {
         let days = generateDays()
+        // 预计算事件按天分组字典，将网格内 O(n×m) 降为 O(1) 查询
+        let eventsByDay = eventsByDayDictionary
 
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 4) {
             ForEach(days.indices, id: \.self) { index in
                 if let date = days[index] {
-                    dayCell(date: date)
+                    dayCell(date: date, hasEvents: eventsByDay[calendar.startOfDay(for: date)] != nil)
                 } else {
                     Color.clear
                         .aspectRatio(1, contentMode: .fill)
@@ -172,12 +210,21 @@ struct ScheduleView: View {
         .padding(.vertical, 4)
     }
 
-    private func dayCell(date: Date) -> some View {
+    /// 按天分组的事件字典，避免每个日历单元格重复遍历全部事件
+    private var eventsByDayDictionary: [Date: [ScheduleItem]] {
+        var dict: [Date: [ScheduleItem]] = [:]
+        for event in scheduleViewModel.events {
+            let key = calendar.startOfDay(for: event.startDate)
+            dict[key, default: []].append(event)
+        }
+        return dict
+    }
+
+    private func dayCell(date: Date, hasEvents: Bool) -> some View {
         let isSelected = calendar.isDate(date, inSameDayAs: scheduleViewModel.selectedDate)
         let isToday = calendar.isDateInToday(date)
         let isCurrentMonth = calendar.isDate(date, equalTo: scheduleViewModel.currentMonth, toGranularity: .month)
         let dayNumber = calendar.component(.day, from: date)
-        let hasEvents = !eventsOnDate(date).isEmpty
 
         return Button {
             scheduleViewModel.refreshForDate(date)
@@ -222,6 +269,9 @@ struct ScheduleView: View {
             .aspectRatio(1, contentMode: .fit)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(calendar.isDateInToday(date) ? L10n.shared.今日 : "\(dayNumber)")
+        .accessibilityValue(hasEvents ? L10n.shared.有日程 : L10n.shared.当日无日程)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     // MARK: - Event List
@@ -258,6 +308,13 @@ struct ScheduleView: View {
                         Text(selectedDateText)
                             .font(.subheadline)
                             .fontWeight(.semibold)
+                        if let lunarText = LunarCalendar.lunarDateString(from: scheduleViewModel.selectedDate) {
+                            Text("·")
+                                .foregroundColor(.secondary)
+                            Text(lunarText)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                     .padding(.horizontal, 4)
                     .padding(.vertical, 6)
@@ -339,21 +396,13 @@ struct ScheduleView: View {
         if calendar.isDateInYesterday(date) {
             return L10n.shared.昨日
         }
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.setLocalizedDateFormatFromTemplate("MMMMdEEEE")
-        return formatter.string(from: date)
+        return Self.selectedDateFormatter.string(from: date)
     }
 
     private var eventsOnSelectedDate: [ScheduleItem] {
         scheduleViewModel.events
             .filter { calendar.isDate($0.startDate, inSameDayAs: scheduleViewModel.selectedDate) }
             .sorted { $0.startDate < $1.startDate }
-    }
-
-    private func eventsOnDate(_ date: Date) -> [ScheduleItem] {
-        scheduleViewModel.events
-            .filter { calendar.isDate($0.startDate, inSameDayAs: date) }
     }
 
     private func generateDays() -> [Date?] {
@@ -382,228 +431,6 @@ struct ScheduleView: View {
         }
 
         return days
-    }
-}
-
-// MARK: - Event Color
-
-private enum ScheduleColor: String, CaseIterable {
-    case red = "#FF3B30"
-    case blue = "#007AFF"
-    case green = "#34C759"
-    case orange = "#FF9500"
-    case purple = "#AF52DE"
-
-    var color: Color {
-        Color(hex: rawValue)
-    }
-
-    var displayName: String {
-        switch self {
-        case .red: return "红色"
-        case .blue: return "蓝色"
-        case .green: return "绿色"
-        case .orange: return "橙色"
-        case .purple: return "紫色"
-        }
-    }
-}
-
-// MARK: - EventEditView
-
-private struct EventEditView: View {
-    @Binding var isPresented: Bool
-
-    let editingEvent: ScheduleItem?
-    let initialDate: Date
-    let onSave: (String, Date, Date?, Bool, String?, String?, String?) -> Void
-
-    @State private var title: String = ""
-    @State private var startDate: Date = Date()
-    @State private var endDate: Date = Date().addingTimeInterval(3600)
-    @State private var hasEndDate: Bool = true
-    @State private var isAllDay: Bool = false
-    @State private var location: String = ""
-    @State private var notes: String = ""
-    @State private var selectedColor: ScheduleColor = .red
-
-    @FocusState private var focusedField: Field?
-
-    private enum Field {
-        case title, location, notes
-    }
-
-    private var isEditing: Bool { editingEvent != nil }
-    private var isValid: Bool {
-        !title.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    init(
-        isPresented: Binding<Bool>,
-        editingEvent: ScheduleItem?,
-        initialDate: Date,
-        onSave: @escaping (String, Date, Date?, Bool, String?, String?, String?) -> Void
-    ) {
-        self._isPresented = isPresented
-        self.editingEvent = editingEvent
-        self.initialDate = initialDate
-        self.onSave = onSave
-
-        if let event = editingEvent {
-            _title = State(initialValue: event.title)
-            _startDate = State(initialValue: event.startDate)
-            _endDate = State(initialValue: event.endDate ?? event.startDate.addingTimeInterval(3600))
-            _hasEndDate = State(initialValue: event.endDate != nil)
-            _isAllDay = State(initialValue: event.isAllDay)
-            _location = State(initialValue: event.location ?? "")
-            _notes = State(initialValue: event.notes ?? "")
-            _selectedColor = State(
-                initialValue: ScheduleColor.allCases.first(where: { $0.rawValue == event.colorHex }) ?? .red
-            )
-        } else {
-            // Default start time: selected date at current hour
-            let calendar = Calendar.current
-            let now = Date()
-            let baseDate = initialDate
-            let hour = calendar.component(.hour, from: now)
-            let minute = calendar.component(.minute, from: now)
-            let roundedMinute = (minute / 15) * 15
-            if let defaultStart = calendar.date(bySettingHour: hour, minute: roundedMinute, second: 0, of: baseDate) {
-                _startDate = State(initialValue: defaultStart)
-                _endDate = State(initialValue: defaultStart.addingTimeInterval(3600))
-            }
-        }
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                // Title
-                Section {
-                    TextField(L10n.shared.事件标题, text: $title)
-                        .font(.body)
-                        .focused($focusedField, equals: .title)
-                        .onAppear {
-                            if !isEditing {
-                                focusedField = .title
-                            }
-                        }
-                }
-
-                // Date & Time
-                Section(L10n.shared.时间) {
-                    DatePicker(
-                        L10n.shared.开始,
-                        selection: $startDate,
-                        displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute]
-                    )
-
-                    Toggle(L10n.shared.结束时间, isOn: $hasEndDate)
-                        .onChange(of: hasEndDate) { newValue in
-                            if !newValue {
-                                // endDate will be nil on save
-                            }
-                        }
-
-                    if hasEndDate {
-                        DatePicker(
-                            L10n.shared.结束,
-                            selection: $endDate,
-                            displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute]
-                        )
-                    }
-
-                    Toggle(L10n.shared.全天, isOn: $isAllDay)
-                }
-
-                // Location
-                Section {
-                    HStack {
-                        Image(systemName: "mappin")
-                            .foregroundColor(.secondary)
-                        TextField(L10n.shared.地点, text: $location)
-                            .focused($focusedField, equals: .location)
-                    }
-                }
-
-                // Notes
-                Section(L10n.shared.备注) {
-                    ZStack(alignment: .topLeading) {
-                        if notes.isEmpty {
-                        Text(L10n.shared.添加备注)
-                            .foregroundColor(.secondary.opacity(0.6))
-                                .padding(.top, 8)
-                                .padding(.leading, 4)
-                        }
-                        TextEditor(text: $notes)
-                            .frame(minHeight: 80)
-                            .focused($focusedField, equals: .notes)
-                    }
-                }
-
-                // Color Picker
-                Section(L10n.shared.颜色) {
-                    HStack(spacing: 16) {
-                        ForEach(ScheduleColor.allCases, id: \.self) { colorOption in
-                            Button {
-                                selectedColor = colorOption
-                            } label: {
-                                VStack(spacing: 6) {
-                                    Circle()
-                                        .fill(colorOption.color)
-                                        .frame(width: 32, height: 32)
-                                        .overlay(
-                                            Circle()
-                                                .stroke(selectedColor == colorOption ? Color.primary : Color.clear, lineWidth: 2)
-                                        )
-                                        .overlay(
-                                            Image(systemName: "checkmark")
-                                                .font(.caption2)
-                                                .fontWeight(.bold)
-                                                .foregroundColor(.white)
-                                                .opacity(selectedColor == colorOption ? 1 : 0)
-                                        )
-
-                                    Text(colorOption.displayName)
-                                        .font(.caption2)
-                                        .foregroundColor(selectedColor == colorOption ? .primary : .secondary)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-            }
-            .navigationTitle(isEditing ? L10n.shared.编辑事件 : L10n.shared.新建事件)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.shared.取消) {
-                        isPresented = false
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(L10n.shared.保存) {
-                        save()
-                    }
-                    .fontWeight(.semibold)
-                    .disabled(!isValid)
-                }
-            }
-            .environment(\.locale, Locale.current)
-        }
-    }
-
-    private func save() {
-        guard isValid else { return }
-        let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
-        let trimmedLocation = location.trimmingCharacters(in: .whitespaces).isEmpty ? nil : location.trimmingCharacters(in: .whitespaces)
-        let trimmedNotes = notes.trimmingCharacters(in: .whitespaces).isEmpty ? nil : notes.trimmingCharacters(in: .whitespaces)
-        let finalEndDate = hasEndDate ? endDate : nil
-
-        onSave(trimmedTitle, startDate, finalEndDate, isAllDay, trimmedLocation, trimmedNotes, selectedColor.rawValue)
-        isPresented = false
     }
 }
 

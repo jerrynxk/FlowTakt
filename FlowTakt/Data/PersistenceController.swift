@@ -1,5 +1,14 @@
 import Foundation
 import CoreData
+import CloudKit
+import Combine
+
+// MARK: - 通知
+
+extension Notification.Name {
+    /// 数据库已重置，所有 ViewModel 应重新加载数据
+    static let databaseDidReset = Notification.Name("com.flowtakt.databaseDidReset")
+}
 
 // MARK: - CoreData Stack
 
@@ -15,8 +24,18 @@ enum PersistenceError: LocalizedError {
     }
 }
 
-final class PersistenceController {
+/// iCloud 同步状态
+enum CloudSyncStatus {
+    case available
+    case unavailable
+    case notDetermined
+}
+
+final class PersistenceController: ObservableObject {
     static let shared = PersistenceController()
+
+    /// iCloud 同步状态
+    @Published var cloudSyncStatus: CloudSyncStatus = .notDetermined
 
     /// 预览用 PersistenceController（内存存储 + Mock 数据）
     static var preview: PersistenceController = {
@@ -119,25 +138,64 @@ final class PersistenceController {
         return controller
     }()
 
-    let container: NSPersistentContainer
+    let container: NSPersistentCloudKitContainer
 
     var viewContext: NSManagedObjectContext {
         return container.viewContext
     }
 
     init(inMemory: Bool = false) {
-        container = NSPersistentContainer(name: "FlowTakt")
+        // 检测测试环境：Xcode 运行测试时设置 XCTestConfigurationFilePath 环境变量
+        let isTesting = inMemory || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
-        if inMemory {
-            container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
-        }
+        container = NSPersistentCloudKitContainer(name: "FlowTakt")
 
-        // 配置持久化存储
-        container.loadPersistentStores { _, error in
-            if let error = error as NSError? {
-                fatalError("CoreData 加载失败：\(error), \(error.userInfo)")
+        if isTesting {
+            // 测试环境：使用内存存储，避免 CloudKit 依赖
+            let description = NSPersistentStoreDescription()
+            description.type = NSInMemoryStoreType
+            container.persistentStoreDescriptions = [description]
+        } else {
+            // 配置 CloudKit 同步
+            guard let description = container.persistentStoreDescriptions.first else {
+                fatalError("无法获取持久化存储描述")
             }
+
+            // 设置 CloudKit 容器
+            description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
+                containerIdentifier: "iCloud.com.flowtakt"
+            )
+
+            // 启用历史追踪（CloudKit 同步必需）
+            description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+
+            // 启用远程变更通知（多设备同步）
+            description.setOption(true as NSNumber,
+                                  forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+
+            // 观察远程变更
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleRemoteChange(_:)),
+                name: .NSPersistentStoreRemoteChange,
+                object: container.persistentStoreCoordinator
+            )
         }
+
+        // 同步加载持久化存储，确保 init 返回前 store 已就绪（避免后续 save() 时 coordinator 为空崩溃）
+        let semaphore = DispatchSemaphore(value: 0)
+        container.loadPersistentStores { [weak self] _, error in
+            if let error = error as NSError? {
+                print("CoreData 加载失败：\(error), \(error.userInfo)")
+                // CloudKit 初始化失败时仍可本地使用
+            }
+            // 仅非测试环境检查 iCloud 账户状态（测试环境中 CKContainer 初始化会崩溃）
+            if !isTesting {
+                self?.checkCloudAccountStatus()
+            }
+            semaphore.signal()
+        }
+        semaphore.wait()
 
         // 冲突合并策略：属性级别的最新写入获胜
         container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
@@ -145,79 +203,142 @@ final class PersistenceController {
     }
 
     /// 保存当前上下文
-    func save() {
+    @discardableResult
+    func save() -> Bool {
         let context = container.viewContext
-        guard context.hasChanges else { return }
-        do {
-            try context.save()
-        } catch {
-            let nsError = error as NSError
-            print("CoreData 保存失败：\(nsError), \(nsError.userInfo)")
+        guard context.hasChanges else { return true }
+        // 防御：确保 coordinator 已加载 stores，避免间歇性 "no persistent stores" 崩溃
+        guard !container.persistentStoreCoordinator.persistentStores.isEmpty else {
+            print("⚠️ save() 跳过：持久化存储尚未就绪")
+            return false
         }
+        var success = true
+        context.performAndWait {
+            do {
+                try context.save()
+            } catch {
+                let nsError = error as NSError
+                print("CoreData 保存失败：\(nsError), \(nsError.userInfo)")
+                success = false
+            }
+        }
+        return success
     }
 
     /// 创建后台上下文用于写操作
     func newBackgroundContext() -> NSManagedObjectContext {
         let context = container.newBackgroundContext()
         context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        // 自动合并主上下文的变更，避免后台上下文读到过期数据
+        context.automaticallyMergesChangesFromParent = true
         return context
     }
 
     // MARK: - 数据库重置
 
-    /// 重置数据库：销毁当前的所有持久化存储文件并重建空数据库
-    /// - 删除 SQLite 及其附属文件（-wal, -shm）
-    /// - 重新创建一个全新的空存储
+    /// 重置数据库：销毁当前的所有持久化存储文件并重建空数据库（保留 CloudKit 同步配置）
+    /// - 销毁持久化存储（自动清理 SQLite 及 wal/shm 附属文件）
+    /// - 重新创建一个带 CloudKit 配置的全新空存储
     /// - 重置所有上下文
     /// - Throws: 重置过程中的错误
     func resetDatabase() throws {
         let coordinator = container.persistentStoreCoordinator
-        let context = container.viewContext
 
-        // 1. 保存当前未提交的变更
-        if context.hasChanges {
-            try context.save()
+        // 在主上下文线程中执行
+        try container.viewContext.performAndWait {
+            let context = container.viewContext
+
+            // 1. 放弃未提交的变更（销毁数据库前不需要保存，保存反而可能因数据损坏抛 NSException 崩溃）
+            context.rollback()
+
+            // 2. 获取当前存储的 URL
+            guard let storeURL = container.persistentStoreDescriptions.first?.url else {
+                throw PersistenceError.storeURLNotFound
+            }
+
+            // 3. 销毁所有现有持久化存储（destroy 会自动删除 SQLite + wal + shm 文件）
+            for store in coordinator.persistentStores {
+                try coordinator.destroyPersistentStore(at: store.url ?? storeURL,
+                                                       ofType: store.type,
+                                                       options: nil)
+            }
+
+            // 4. 重建带 CloudKit 配置的持久化存储描述
+            let newDescription = NSPersistentStoreDescription(url: storeURL)
+            newDescription.shouldMigrateStoreAutomatically = true
+            newDescription.shouldInferMappingModelAutomatically = true
+
+            // 重新配置 CloudKit 同步（与 init 中保持一致）
+            newDescription.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
+                containerIdentifier: AppConstants.cloudKitContainerIdentifier
+            )
+            // 启用历史追踪（CloudKit 同步必需）
+            newDescription.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+            // 启用远程变更通知（多设备同步）
+            newDescription.setOption(true as NSNumber,
+                                     forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+
+            // 替换容器描述并重新加载（同步等待，确保 store 就绪后再返回）
+            container.persistentStoreDescriptions = [newDescription]
+
+            let resetSemaphore = DispatchSemaphore(value: 0)
+            container.loadPersistentStores { [weak self] _, error in
+                if let error = error as NSError? {
+                    print("重置后加载存储失败：\(error), \(error.userInfo)")
+                }
+                self?.checkCloudAccountStatus()
+                resetSemaphore.signal()
+            }
+            resetSemaphore.wait()
+
+            // 5. 重置上下文
+            context.reset()
+
+            print("✅ 数据库已成功重置：\(storeURL.lastPathComponent)")
         }
 
-        // 2. 获取当前存储的 URL
-        guard let storeURL = container.persistentStoreDescriptions.first?.url else {
-            throw PersistenceError.storeURLNotFound
+        // 通知所有 ViewModel 同步清空旧数据（必须在 performAndWait 外同步发送，
+        // 确保 alert 切换和 SwiftUI layout 之前 VM 已完成清理，否则会崩溃）
+        NotificationCenter.default.post(name: .databaseDidReset, object: nil)
+    }
+
+    // MARK: - CloudKit
+
+    /// 处理远程变更通知（其他设备同步数据）
+    @objc private func handleRemoteChange(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            self?.container.viewContext.refreshAllObjects()
         }
+    }
 
-        // 3. 移除所有现有持久化存储
-        for store in coordinator.persistentStores {
-            try coordinator.remove(store)
-        }
-
-        // 4. 手动删除 SQLite 及其附属文件
-        let fileManager = FileManager.default
-        let filesToDelete = [
-            storeURL,
-            storeURL.appendingPathExtension("sqlite-wal"),
-            storeURL.appendingPathExtension("sqlite-shm")
-        ]
-
-        for fileURL in filesToDelete {
-            if fileManager.fileExists(atPath: fileURL.path) {
-                try fileManager.removeItem(at: fileURL)
+    /// 检查 iCloud 账户状态
+    private func checkCloudAccountStatus() {
+        // 使用显式容器 ID（与 init 配置一致），避免 CKContainer.default() 在多容器 entitlement 下误判
+        CKContainer(identifier: AppConstants.cloudKitContainerIdentifier).accountStatus { [weak self] status, error in
+            DispatchQueue.main.async {
+                switch status {
+                case .available:
+                    self?.cloudSyncStatus = .available
+                    print("✅ iCloud 账户可用，CloudKit 同步已启用")
+                case .noAccount, .restricted:
+                    self?.cloudSyncStatus = .unavailable
+                    print("⚠️ iCloud 账户不可用，数据仅本地存储")
+                case .couldNotDetermine, .temporarilyUnavailable:
+                    self?.cloudSyncStatus = .unavailable
+                    print("⚠️ 无法确定 iCloud 状态")
+                @unknown default:
+                    self?.cloudSyncStatus = .notDetermined
+                }
             }
         }
+    }
 
-        // 5. 重新添加空持久化存储（自动创建新的 SQLite 文件）
-        let options: [String: Any] = [
-            NSMigratePersistentStoresAutomaticallyOption: true,
-            NSInferMappingModelAutomaticallyOption: true
-        ]
-        try coordinator.addPersistentStore(
-            ofType: NSSQLiteStoreType,
-            configurationName: nil,
-            at: storeURL,
-            options: options
-        )
+    /// 手动触发同步（保存主上下文，触发 CloudKit 增量同步）
+    func forceSync() {
+        print(save() ? "🔄 已手动触发 CloudKit 同步" : "⚠️ 同步跳过：存储未就绪")
+    }
 
-        // 6. 重置上下文
-        context.reset()
-
-        print("✅ 数据库已成功重置：\(storeURL.lastPathComponent)")
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 }

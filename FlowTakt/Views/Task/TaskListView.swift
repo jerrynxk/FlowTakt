@@ -43,6 +43,7 @@ struct TaskListView: View {
                         Image(systemName: "plus")
                             .fontWeight(.semibold)
                     }
+                    .accessibilityLabel(L10n.shared.新建任务)
                 }
             }
             .sheet(isPresented: $taskViewModel.showCreateSheet) {

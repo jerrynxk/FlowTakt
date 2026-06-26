@@ -25,6 +25,12 @@ final class NotificationService: NotificationServiceProtocol {
     }
 
     func scheduleSessionEndNotification(sessionId: UUID, title: String, timeInterval: TimeInterval) {
+        // UNTimeIntervalNotificationTrigger 要求正数 timeInterval，否则抛异常
+        guard timeInterval > 0 else {
+            print("⚠️ 通知触发时间必须大于 0，已忽略：\(timeInterval)")
+            return
+        }
+
         let content = UNMutableNotificationContent()
         content.title = L10n.shared.专注结束
         content.body = L10n.shared.番茄钟已完成(title)

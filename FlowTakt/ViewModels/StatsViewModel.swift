@@ -66,6 +66,35 @@ final class StatsViewModel: ObservableObject {
             self?.refresh()
         }
         .store(in: &cancellables)
+
+        // 监听数据库重置通知，立即清空旧 ManagedObject 引用防止崩溃
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDatabaseReset),
+            name: .databaseDidReset,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Private Methods
+
+    @objc private func handleDatabaseReset() {
+        // 立即清空已删除的 ManagedObject 引用
+        todaySessions = []
+        weeklyData = []
+        monthlyData = []
+        totalCompletedPomodoros = 0
+        currentStreak = 0
+        todayDuration = 0
+        completionRate = 0
+        // 异步重新加载
+        DispatchQueue.main.async { [weak self] in
+            self?.refresh()
+        }
     }
 
     // MARK: - Public Methods
@@ -166,13 +195,14 @@ final class StatsViewModel: ObservableObject {
         currentStreak = computeStreak()
     }
 
-    /// 获取指定日期范围内的所有会话
+    /// 获取指定日期范围内的已完成会话
     private func fetchCompletedSessions(from startDate: Date, to endDate: Date) -> [FocusSession] {
         let request = FocusSession.fetchRequest()
         request.predicate = NSPredicate(
-            format: "startTime >= %@ AND startTime <= %@",
+            format: "startTime >= %@ AND startTime <= %@ AND status == %@",
             startDate as NSDate,
-            endDate as NSDate
+            endDate as NSDate,
+            SessionStatus.completed.rawValue
         )
         request.sortDescriptors = [NSSortDescriptor(keyPath: \FocusSession.startTime, ascending: true)]
         do {
@@ -205,7 +235,7 @@ final class StatsViewModel: ObservableObject {
         var streak = 0
         var currentDate = Date().startOfDay
 
-        while true {
+        while streak < 10000 {
             let sessionsOnDate = sessions.filter {
                 calendar.isDate($0.startTime, inSameDayAs: currentDate)
             }

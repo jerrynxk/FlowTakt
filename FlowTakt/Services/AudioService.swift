@@ -17,13 +17,18 @@ protocol AudioServiceProtocol {
 final class AudioService: AudioServiceProtocol {
     private var audioEngine: AVAudioEngine?
     private var whiteNoiseNode: AVAudioSourceNode?
-    private var toneEngine: AVAudioEngine?
-    private(set) var isWhiteNoisePlaying = false
-
-    private let engineQueue = DispatchQueue(label: "audio.engine")
+    private var isWhiteNoisePlayingInternal = false
+    /// 多个音效引擎队列：避免快速连续播放时新引擎覆盖旧引擎导致前一个音被截断
+    private var activeToneEngines: [AVAudioEngine] = []
+    /// 私有串行队列，保证音频引擎状态变更的线程安全
+    private let audioQueue = DispatchQueue(label: "com.flowtakt.audio.engine")
 
     init() {
         configureAudioSession()
+    }
+
+    var isWhiteNoisePlaying: Bool {
+        audioQueue.sync { isWhiteNoisePlayingInternal }
     }
 
     // MARK: - 音频会话配置
@@ -45,6 +50,7 @@ final class AudioService: AudioServiceProtocol {
     }
 
     func playCompleteSound() {
+        // 第一个音使用独立引擎，不会因为第二个音启动而被覆盖
         playTone(frequency: 660, duration: 0.2)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             self?.playTone(frequency: 880, duration: 0.3)
@@ -62,15 +68,17 @@ final class AudioService: AudioServiceProtocol {
     // MARK: - 白噪音
 
     func toggleWhiteNoise() {
-        if isWhiteNoisePlaying {
-            stopWhiteNoise()
-        } else {
-            startWhiteNoise()
+        audioQueue.sync {
+            if isWhiteNoisePlayingInternal {
+                stopWhiteNoiseLocked()
+            } else {
+                startWhiteNoiseLocked()
+            }
         }
     }
 
-    private func startWhiteNoise() {
-        guard !isWhiteNoisePlaying else { return }
+    private func startWhiteNoiseLocked() {
+        guard !isWhiteNoisePlayingInternal else { return }
 
         let engine = AVAudioEngine()
         let mainMixer = engine.mainMixerNode
@@ -96,14 +104,14 @@ final class AudioService: AudioServiceProtocol {
             try engine.start()
             audioEngine = engine
             whiteNoiseNode = sourceNode
-            isWhiteNoisePlaying = true
+            isWhiteNoisePlayingInternal = true
         } catch {
             print("白噪音引擎启动失败：\(error.localizedDescription)")
         }
     }
 
-    private func stopWhiteNoise() {
-        guard isWhiteNoisePlaying else { return }
+    private func stopWhiteNoiseLocked() {
+        guard isWhiteNoisePlayingInternal else { return }
 
         if let node = whiteNoiseNode {
             audioEngine?.disconnectNodeOutput(node)
@@ -112,7 +120,7 @@ final class AudioService: AudioServiceProtocol {
         audioEngine?.reset()
         audioEngine = nil
         whiteNoiseNode = nil
-        isWhiteNoisePlaying = false
+        isWhiteNoisePlayingInternal = false
     }
 
     // MARK: - 私有：纯音生成
@@ -150,13 +158,20 @@ final class AudioService: AudioServiceProtocol {
             return
         }
 
-        // 将引擎存为实例变量，防止局部变量在回调前被 ARC 释放
-        self.toneEngine = engine
+        // 将引擎加入活动队列，避免被 ARC 提前释放（修复音效截断）
+        audioQueue.sync {
+            activeToneEngines.append(engine)
+        }
 
         playerNode.scheduleBuffer(buffer, at: nil, options: .interrupts) { [weak self] in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self?.toneEngine?.stop()
-                self?.toneEngine = nil
+                guard let self = self else { return }
+                self.audioQueue.sync {
+                    engine.stop()
+                    if let index = self.activeToneEngines.firstIndex(where: { $0 === engine }) {
+                        self.activeToneEngines.remove(at: index)
+                    }
+                }
             }
         }
         playerNode.play()

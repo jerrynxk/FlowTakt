@@ -42,6 +42,20 @@ final class FocusViewModel: ObservableObject {
     // MARK: - Private State
 
     private var cancellables = Set<AnyCancellable>()
+
+    // MARK: - Deinit
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Private: Database Reset
+
+    @objc private func handleDatabaseReset() {
+        // 立即清空已删除的 ManagedObject 引用
+        currentSession = nil
+        selectedTask = nil
+    }
     private var durationForPhase: TimeInterval = AppConstants.defaultFocusDuration
     private var wasWhiteNoiseOnBeforePause = false
 
@@ -99,13 +113,58 @@ final class FocusViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // 检查是否有未完成的会话
+        // 监听数据库重置通知，立即清空旧 ManagedObject 引用防止崩溃
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDatabaseReset),
+            name: .databaseDidReset,
+            object: nil
+        )
+
+        // 检查是否有未完成的会话（只记录状态，延迟到 View 就绪后再恢复）
         if let runningSession = focusService.getCurrentSession() {
             self.currentSession = runningSession
             self.activePhase = FocusPhase(rawValue: runningSession.phase) ?? .focus
             self.currentRoundIndex = Int(runningSession.roundIndex)
-            self.timerState = .running
+
+            if Date().timeIntervalSince(runningSession.startTime) > runningSession.plannedDuration {
+                needsRestore = .expired(session: runningSession)
+            } else {
+                needsRestore = .running(session: runningSession)
+            }
         }
+    }
+
+    /// View 就绪后调用，恢复未完成的会话（执行 CoreData 写入和计时器启动）
+    func restorePendingSessionIfNeeded() {
+        guard let needsRestore else { return }
+        self.needsRestore = nil
+
+        switch needsRestore {
+        case .running(let session):
+            let elapsed = Date().timeIntervalSince(session.startTime)
+            let remaining = max(0, session.plannedDuration - elapsed)
+            if remaining > 0 {
+                timerManager.start(duration: remaining)
+                timerState = .running
+                appBlockerService.startBlocking()
+                if activePhase == .focus, !audioService.isWhiteNoisePlaying {
+                    audioService.toggleWhiteNoise()
+                    isWhiteNoiseOn = true
+                }
+            }
+        case .expired(let session):
+            focusService.completeSession(session)
+            self.currentSession = nil
+            self.timerState = .idle
+        }
+    }
+
+    /// 未完成会话的恢复状态（init 中不执行 CoreData 写入，延迟处理）
+    private var needsRestore: RestoreState?
+    private enum RestoreState {
+        case running(session: FocusSession)
+        case expired(session: FocusSession)
     }
 
     // MARK: - Public Methods
@@ -133,7 +192,7 @@ final class FocusViewModel: ObservableObject {
         // 调度专注结束通知
         notificationService.scheduleSessionEndNotification(
             sessionId: session.id,
-            title: "专注完成",
+            title: L10n.shared.专注结束,
             timeInterval: durationForPhase
         )
 
@@ -175,39 +234,57 @@ final class FocusViewModel: ObservableObject {
     }
 
     /// 跳过当前阶段
+    /// 语义：用户主动结束当前阶段（不等待计时器结束）。
+    /// 快进到下一阶段：完成当前会话 → 自动开始下一阶段计时
+    /// - focus → break（第 4 轮后长休息，否则短休息），轮次 +1
+    /// - break → focus，轮次不变
     func skipPhase() {
-        guard let session = currentSession else { return }
+        guard timerState == .running || timerState == .paused else { return }
 
-        // 中断当前会话
-        focusService.interruptSession(session)
-        timerManager.stop()
-        appBlockerService.stopBlocking()
-
-        currentSession = nil
-        timerState = .idle
-        timerDisplay = Self.formatTime(duration(for: activePhase))
-
-        // 完成当前番茄钟计数仍然增加（算作完成了一个番茄周期）
-        // 但如果跳过的不是 focus 阶段，则不增加轮次
-        if activePhase == .focus {
-            currentRoundIndex += 1
+        // 1. 完成当前会话
+        if let session = currentSession {
+            focusService.completeSession(session)
+            notificationService.cancelNotification(withIdentifier: session.id.uuidString)
         }
 
-        // 播放提示音
-        audioService.playAlarmSound()
+        timerManager.stop()
+        appBlockerService.stopBlocking()
+        currentSession = nil
+
+        // 2. 确定下一阶段
+        let previousPhase = activePhase
+        if previousPhase == .focus {
+            currentRoundIndex += 1
+            let longBreakEvery = UserDefaults.standard.integer(forKey: "longBreakAfterRounds").nonZeroElse(AppConstants.longBreakAfterRounds)
+            activePhase = (currentRoundIndex % longBreakEvery == 0) ? .longBreak : .shortBreak
+        } else {
+            activePhase = .focus
+        }
+
+        // 3. 自动开始下一阶段
+        timerDisplay = Self.formatTime(duration(for: activePhase))
+        audioService.playCompleteSound()
+
+        // 检查成就
+        if previousPhase == .focus {
+            achievementService.checkAndUnlockAchievements()
+        }
+
+        // 延迟启动下一段，避免动画冲突
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.startFocus(phase: self?.activePhase ?? .focus)
+        }
     }
 
     /// 放弃当前会话
     func abandonSession() {
-        guard let session = currentSession else { return }
+        if let session = currentSession {
+            focusService.abandonSession(session)
+            notificationService.cancelNotification(withIdentifier: session.id.uuidString)
+        }
 
-        focusService.abandonSession(session)
         timerManager.stop()
         appBlockerService.stopBlocking()
-
-        // 取消待处理的通知
-        notificationService.cancelNotification(withIdentifier: session.id.uuidString)
-
         currentSession = nil
         timerState = .idle
         timerDisplay = Self.formatTime(duration(for: activePhase))
@@ -292,9 +369,4 @@ final class FocusViewModel: ObservableObject {
 }
 
 // MARK: - 辅助扩展
-
-private extension Double {
-    func nonZeroElse(_ fallback: Double) -> Double {
-        return self > 0 ? self : fallback
-    }
-}
+// nonZeroElse 已提取到 Extensions/Numeric+Extensions.swift

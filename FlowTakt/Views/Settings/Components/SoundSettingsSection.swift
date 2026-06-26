@@ -32,6 +32,6 @@ struct SoundSettingsSection: View {
 
 #Preview {
     Form {
-        SoundSettingsSection(viewModel: SettingsViewModel())
+        SoundSettingsSection(viewModel: SettingsViewModel(syncService: MockSyncService()))
     }
 }

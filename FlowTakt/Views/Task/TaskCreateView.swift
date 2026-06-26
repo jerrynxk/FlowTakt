@@ -14,8 +14,22 @@ struct TaskCreateView: View {
     @State private var hasDueDate: Bool = false
     @State private var dueDate: Date = Date().addingTimeInterval(86400)
     @State private var isSaving: Bool = false
+    @State private var hasRecurrence: Bool = false
+    @State private var recurrenceRule: String = "none"
 
     private let priorityValues: [Int16] = [1, 2, 3]
+    private let recurrenceOptions: [(String, String, String)] = [
+        ("none", L10n.shared.不重复, "No Repeat"),
+        ("daily", L10n.shared.每天, "Daily"),
+        ("weekday", L10n.shared.工作日, "Weekdays"),
+        ("weekly", L10n.shared.每周, "Weekly"),
+        ("biweekly", L10n.shared.每两周, "Biweekly"),
+        ("monthly", L10n.shared.每月, "Monthly")
+    ]
+
+    private func recurrenceLabel(_ rule: String) -> String {
+        recurrenceOptions.first { $0.0 == rule }.map { L10n.shared.isEnglish ? $0.2 : $0.1 } ?? rule
+    }
 
     private func priorityLabel(_ value: Int16) -> String {
         switch value {
@@ -87,6 +101,20 @@ struct TaskCreateView: View {
                         .datePickerStyle(.graphical)
                     }
                 }
+
+                // MARK: 重复
+                Section {
+                    Toggle(L10n.shared.重复任务, isOn: $hasRecurrence)
+                        .tint(.focusRed)
+
+                    if hasRecurrence {
+                        Picker(L10n.shared.重复频率, selection: $recurrenceRule) {
+                            ForEach(recurrenceOptions.filter { $0.0 != "none" }, id: \.0) { option in
+                                Text(recurrenceLabel(option.0)).tag(option.0)
+                            }
+                        }
+                    }
+                }
             }
             .navigationTitle(L10n.shared.新建任务)
             .navigationBarTitleDisplayMode(.inline)
@@ -121,9 +149,12 @@ struct TaskCreateView: View {
             notes: notes.trimmingCharacters(in: .whitespaces).isEmpty ? nil : notes,
             estimatedPomodoros: estimatedPomodoros,
             priority: priority,
-            dueDate: hasDueDate ? dueDate : nil
+            dueDate: hasDueDate ? dueDate : nil,
+            recurrenceRule: hasRecurrence ? recurrenceRule : nil
         )
-        // dismiss is handled internally by taskViewModel setting showCreateSheet = false
+        // 保存后恢复 isSaving 状态（taskViewModel 内部不会主动恢复）
+        // dismiss 由 taskViewModel.showCreateSheet = false 触发
+        isSaving = false
     }
 }
 

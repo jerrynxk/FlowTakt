@@ -23,7 +23,7 @@ struct FocusView: View {
         }
     }
 
-    /// 精确的进度值（0.0 ~ 1.0）
+    /// 精确的进度值（0.0 ~ 1.0），直接使用 TimerManager 的 progress，避免字符串解析
     private var progressValue: Double {
         switch focusViewModel.timerState {
         case .idle:
@@ -31,15 +31,7 @@ struct FocusView: View {
         case .finished:
             return 1
         case .running, .paused:
-            let components = focusViewModel.timerDisplay.split(separator: ":")
-            guard components.count == 2,
-                  let minutes = Double(components[0]),
-                  let seconds = Double(components[1]) else {
-                return 0
-            }
-            let remaining = minutes * 60 + seconds
-            guard totalDuration > 0 else { return 0 }
-            return min(1, max(0, 1 - (remaining / totalDuration)))
+            return min(1, max(0, focusViewModel.progress))
         }
     }
 
@@ -104,25 +96,33 @@ struct FocusView: View {
             }
         }
         .background(Color.appBackground.ignoresSafeArea())
+        .task {
+            focusViewModel.restorePendingSessionIfNeeded()
+        }
     }
 
     // MARK: - 轮次进度
 
     private var roundProgressView: some View {
         HStack(spacing: 8) {
+            // 使用非负取模，避免 currentRoundIndex 为 0 或异常值时产生负数
+            let completedInCycle = ((focusViewModel.currentRoundIndex - 1) % longBreakAfterRounds + longBreakAfterRounds) % longBreakAfterRounds
             ForEach(0..<longBreakAfterRounds, id: \.self) { index in
                 Circle()
-                    .fill(index < (focusViewModel.currentRoundIndex - 1) % longBreakAfterRounds
+                    .fill(index < completedInCycle
                           ? Color.forPhase(focusViewModel.activePhase)
                           : Color(.systemGray4))
                     .frame(width: 10, height: 10)
+                    .accessibilityHidden(true)
             }
 
             Text(L10n.shared.round(focusViewModel.currentRoundIndex))
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .padding(.leading, 4)
+                .accessibilityLabel(L10n.shared.round(focusViewModel.currentRoundIndex))
         }
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - 白噪音开关
@@ -147,6 +147,7 @@ struct FocusView: View {
                           : Color(.systemGray5))
             )
         }
+        .accessibilityLabel(focusViewModel.isWhiteNoiseOn ? L10n.shared.白噪音开 : L10n.shared.白噪音关)
     }
 }
 
@@ -172,7 +173,7 @@ struct FocusView_Previews: PreviewProvider {
                 ),
                 taskService: TaskService(persistenceController: PersistenceController.shared)
             ))
-            .environmentObject(SettingsViewModel())
+            .environmentObject(SettingsViewModel(syncService: MockSyncService()))
     }
 }
 #endif

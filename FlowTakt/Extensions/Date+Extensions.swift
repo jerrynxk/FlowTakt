@@ -11,22 +11,30 @@ extension Date {
     /// 获取今天的结束时间（23:59:59）
     var endOfDay: Date {
         let start = startOfDay
-        return Calendar.current.date(byAdding: .day, value: 1, to: start)!
-            .addingTimeInterval(-1)
+        guard let nextDay = Calendar.current.date(byAdding: .day, value: 1, to: start) else {
+            return start.addingTimeInterval(86399)
+        }
+        return nextDay.addingTimeInterval(-1)
     }
 
     /// 获取本周的起始时间（周一 00:00:00）
     var startOfWeek: Date {
         let calendar = Calendar.current
         let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: self)
-        return calendar.date(from: components)!
+        guard let date = calendar.date(from: components) else {
+            return startOfDay
+        }
+        return date
     }
 
     /// 获取本月的起始时间
     var startOfMonth: Date {
         let calendar = Calendar.current
         let components = calendar.dateComponents([.year, .month], from: self)
-        return calendar.date(from: components)!
+        guard let date = calendar.date(from: components) else {
+            return startOfDay
+        }
+        return date
     }
 
     /// 格式化为简短日期字符串
@@ -62,7 +70,10 @@ extension Date {
 
     /// 是否在昨天
     var isYesterday: Bool {
-        isSameDay(as: Calendar.current.date(byAdding: .day, value: -1, to: Date())!)
+        guard let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) else {
+            return false
+        }
+        return isSameDay(as: yesterday)
     }
 
     // MARK: - 农历

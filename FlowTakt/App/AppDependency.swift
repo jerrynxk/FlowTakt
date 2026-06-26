@@ -88,14 +88,15 @@ final class AppDependency: ObservableObject {
             persistenceController: persistenceController
         )
 
-        self.settingsViewModel = SettingsViewModel()
+        self.settingsViewModel = SettingsViewModel(syncService: syncService)
 
         self.achievementViewModel = AchievementViewModel(
             achievementService: achievementService
         )
 
         self.scheduleViewModel = ScheduleViewModel(
-            scheduleService: scheduleService
+            scheduleService: scheduleService,
+            persistenceController: persistenceController
         )
 
         self.habitViewModel = HabitViewModel(

@@ -50,7 +50,7 @@ final class TaskViewModelTests: XCTestCase {
         newTask.createdAt = Date()
         newTask.updatedAt = Date()
 
-        mockTaskService.createTaskHandler = { _, _, _, _, _ in
+        mockTaskService.createTaskHandler = { _, _, _, _, _, _ in
             return newTask
         }
         mockTaskService.tasks = [newTask]
@@ -105,7 +105,7 @@ final class TaskViewModelTests: XCTestCase {
         task.updatedAt = Date()
 
         // Mock updateTask to actually modify the task
-        mockTaskService.updateTaskHandler = { t, title, notes, estimated, priority, status, dueDate in
+        mockTaskService.updateTaskHandler = { t, title, notes, estimated, priority, status, dueDate, recurrenceRule in
             if let s = status { t.status = s }
         }
         mockTaskService.tasks = [task]
@@ -127,7 +127,7 @@ final class TaskViewModelTests: XCTestCase {
         task.createdAt = Date()
         task.updatedAt = Date()
 
-        mockTaskService.updateTaskHandler = { t, title, notes, estimated, priority, status, dueDate in
+        mockTaskService.updateTaskHandler = { t, title, notes, estimated, priority, status, dueDate, recurrenceRule in
             if let s = status { t.status = s }
         }
         mockTaskService.tasks = [task]

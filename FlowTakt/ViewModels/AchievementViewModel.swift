@@ -26,6 +26,32 @@ final class AchievementViewModel: ObservableObject {
 
         // 初始化时加载数据
         refresh()
+
+        // 监听数据库重置通知，及时清理已删除的 NSManagedObject 引用
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDatabaseReset),
+            name: .databaseDidReset,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Private Methods
+
+    @objc private func handleDatabaseReset() {
+        // 立即清空已删除的对象引用，防止 SwiftUI ForEach 访问崩溃
+        achievements = []
+        unlockedCount = 0
+        totalPoints = 0
+        todayPoints = 0
+        // 异步重新加载（等待新 store 完全就绪）
+        DispatchQueue.main.async { [weak self] in
+            self?.refresh()
+        }
     }
 
     // MARK: - Public Methods

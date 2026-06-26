@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 
 // MARK: - TimeRecordView
 
@@ -41,13 +40,10 @@ struct TimeRecordView: View {
         let total = timeRecordViewModel.totalDurationToday
         let hours = Int(total) / 3600
         let minutes = (Int(total) % 3600) / 60
-        if hours > 0 {
-            return "\(hours)h \(minutes)m"
-        }
-        return "\(minutes)m"
+        return L10n.shared.小时分钟(hours, minutes)
     }
 
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    @State private var elapsedTimer: Timer?
 
     // MARK: - Body
 
@@ -64,15 +60,25 @@ struct TimeRecordView: View {
             .background(Color.appBackground)
             .navigationTitle(L10n.shared.计时)
             .navigationBarTitleDisplayMode(.large)
-            .onReceive(timer) { _ in
-                updateElapsedTime()
+            .onDisappear {
+                elapsedTimer?.invalidate()
+                elapsedTimer = nil
             }
             .onChange(of: timeRecordViewModel.selectedDate) { _ in
                 timeRecordViewModel.refreshTodayTotal()
                 elapsedTime = 0
             }
             .onChange(of: timeRecordViewModel.isRecording) { isRecording in
-                if !isRecording {
+                if isRecording {
+                    elapsedTimer?.invalidate()
+                    elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                        self.elapsedTime = Date().timeIntervalSince(timeRecordViewModel.currentRecord?.startTime ?? Date())
+                    }
+                    // 立即显示一次
+                    self.elapsedTime = Date().timeIntervalSince(timeRecordViewModel.currentRecord?.startTime ?? Date())
+                } else {
+                    elapsedTimer?.invalidate()
+                    elapsedTimer = nil
                     elapsedTime = 0
                     isPulsing = false
                 }
@@ -249,7 +255,11 @@ struct TimeRecordView: View {
                 emptyRecordsView
             } else {
                 ForEach(recordsForDate) { record in
-                    TimeRecordRowView(record: record)
+                    TimeRecordRowView(
+                        record: record,
+                        isCurrentRecord: record == timeRecordViewModel.currentRecord,
+                        liveElapsed: record == timeRecordViewModel.currentRecord ? elapsedTime : nil
+                    )
                 }
                 .onDelete { indexSet in
                     deleteRecords(at: indexSet)
@@ -281,14 +291,6 @@ struct TimeRecordView: View {
 
     // MARK: - Helpers
 
-    private func updateElapsedTime() {
-        guard timeRecordViewModel.isRecording,
-              let record = timeRecordViewModel.currentRecord else {
-            return
-        }
-        elapsedTime = Date().timeIntervalSince(record.startTime)
-    }
-
     private func deleteRecords(at indexSet: IndexSet) {
         for index in indexSet {
             let record = recordsForDate[index]
@@ -301,6 +303,24 @@ struct TimeRecordView: View {
 
 private struct TimeRecordRowView: View {
     let record: TimeRecord
+    var isCurrentRecord: Bool = false
+    var liveElapsed: TimeInterval? = nil
+
+    private var liveDurationText: String {
+        if let elapsed = liveElapsed {
+            let totalMinutes = Int(elapsed) / 60
+            if totalMinutes >= 60 {
+                let hours = totalMinutes / 60
+                let mins = totalMinutes % 60
+                if mins > 0 { return "\(hours)h \(mins)m" }
+                return "\(hours)h"
+            }
+            let seconds = Int(elapsed) % 60
+            if totalMinutes > 0 { return "\(totalMinutes)m \(seconds)s" }
+            return "\(seconds)s"
+        }
+        return record.durationText
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -334,11 +354,18 @@ private struct TimeRecordRowView: View {
                 }
 
                 // 时长
-                Text(record.durationText)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primary)
-                    .monospacedDigit()
+                HStack(spacing: 4) {
+                    if isCurrentRecord {
+                        Circle()
+                            .fill(Color.focusRed)
+                            .frame(width: 8, height: 8)
+                    }
+                    Text(liveDurationText)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(isCurrentRecord ? .focusRed : .primary)
+                        .monospacedDigit()
+                }
             }
 
             // 第二行：项目 + 时间范围

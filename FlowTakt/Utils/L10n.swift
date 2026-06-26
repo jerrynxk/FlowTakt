@@ -279,12 +279,15 @@ final class L10n: ObservableObject {
     var 进度: String { isEnglish ? "Progress" : "进度" }
     var 状态: String { isEnglish ? "Status" : "状态" }
     var 无任务: String { isEnglish ? "No Task" : "无任务" }
+    var 未分类: String { isEnglish ? "Uncategorized" : "未分类" }
     var 无关联任务: String { isEnglish ? "No Linked Task" : "无关联任务" }
     var 无可用任务: String { isEnglish ? "No Available Tasks" : "无可用任务" }
 
     // MARK: - 任务
     var 任务: String { isEnglish ? "Task" : "任务" }
     var 任务标题: String { isEnglish ? "Task Title" : "任务标题" }
+    var 重复任务: String { isEnglish ? "Recurring Task" : "重复任务" }
+    var 重复频率: String { isEnglish ? "Repeat Frequency" : "重复频率" }
     var 任务详情: String { isEnglish ? "Task Details" : "任务详情" }
     var 任务分解: String { isEnglish ? "Task Breakdown" : "任务分解" }
     var 新建任务: String { isEnglish ? "New Task" : "新建任务" }
@@ -330,11 +333,14 @@ final class L10n: ObservableObject {
     var 新建习惯: String { isEnglish ? "New Habit" : "新建习惯" }
     var 建立一个小习惯: String { isEnglish ? "Build a small habit" : "建立一个小习惯" }
     var 创建第一个习惯: String { isEnglish ? "Create your first habit" : "创建第一个习惯" }
-    var 还没有习惯: String { isEnglish ? "No habits yet" : "还没有习惯" }
     var 频率: String { isEnglish ? "Frequency" : "频率" }
     var 每天: String { isEnglish ? "Daily" : "每天" }
     var 每周: String { isEnglish ? "Weekly" : "每周" }
     var 每月: String { isEnglish ? "Monthly" : "每月" }
+    var 不重复: String { isEnglish ? "No Repeat" : "不重复" }
+    var 工作日: String { isEnglish ? "Weekdays" : "工作日" }
+    var 每两周: String { isEnglish ? "Biweekly" : "每两周" }
+    var 每年: String { isEnglish ? "Yearly" : "每年" }
     var 每日目标次数: String { isEnglish ? "Daily Target" : "每日目标次数" }
     var 名称: String { isEnglish ? "Name" : "名称" }
     var 图标: String { isEnglish ? "Icon" : "图标" }
@@ -357,7 +363,17 @@ final class L10n: ObservableObject {
     var 新建事件: String { isEnglish ? "New Event" : "新建事件" }
     var 编辑事件: String { isEnglish ? "Edit Event" : "编辑事件" }
     var 当日无日程: String { isEnglish ? "No events today" : "当日无日程" }
+    var 有日程: String { isEnglish ? "Has events" : "有日程" }
+    var 上一月: String { isEnglish ? "Previous Month" : "上一月" }
+    var 下一月: String { isEnglish ? "Next Month" : "下一月" }
     var 日程: String { isEnglish ? "Schedule" : "日程" }
+
+    // MARK: - 颜色名称
+    var 红色: String { isEnglish ? "Red" : "红色" }
+    var 蓝色: String { isEnglish ? "Blue" : "蓝色" }
+    var 绿色: String { isEnglish ? "Green" : "绿色" }
+    var 橙色: String { isEnglish ? "Orange" : "橙色" }
+    var 紫色: String { isEnglish ? "Purple" : "紫色" }
 
     // MARK: - 统计
     var 统计: String { isEnglish ? "Stats" : "统计" }
@@ -382,6 +398,8 @@ final class L10n: ObservableObject {
     // MARK: - 同步与数据
     var 同步与数据: String { isEnglish ? "Sync & Data" : "同步与数据" }
     var iCloud同步: String { isEnglish ? "iCloud Sync" : "iCloud 同步" }
+    var 立即同步: String { isEnglish ? "Sync Now" : "立即同步" }
+    var iCloud同步说明: String { isEnglish ? "Enable iCloud to sync data across devices via CloudKit" : "开启 iCloud 同步后，数据将通过 CloudKit 在多台设备间同步" }
     var 每日提醒: String { isEnglish ? "Daily Reminder" : "每日提醒" }
     var 每日提醒标题: String { isEnglish ? "Don't forget to focus today!" : "今天别忘了专注哦！" }
     var 每日提醒内容: String { isEnglish ? "Start your first pomodoro and have a productive day 🍅" : "开启今天的第一个番茄钟，开始高效的一天 🍅" }

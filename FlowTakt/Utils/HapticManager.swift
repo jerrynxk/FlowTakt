@@ -6,36 +6,43 @@ import SwiftUI
 final class HapticManager {
     static let shared = HapticManager()
 
-    private init() {}
+    private let lightGenerator = UIImpactFeedbackGenerator(style: .light)
+    private let mediumGenerator = UIImpactFeedbackGenerator(style: .medium)
+    private let heavyGenerator = UIImpactFeedbackGenerator(style: .heavy)
+    private let notificationGenerator = UINotificationFeedbackGenerator()
+    private let selectionGenerator = UISelectionFeedbackGenerator()
+
+    private init() {
+        lightGenerator.prepare()
+        mediumGenerator.prepare()
+        heavyGenerator.prepare()
+        notificationGenerator.prepare()
+        selectionGenerator.prepare()
+    }
 
     /// 轻微震动（按钮交互）
     func lightImpact() {
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.impactOccurred()
+        lightGenerator.impactOccurred()
     }
 
     /// 中等震动（重要操作）
     func mediumImpact() {
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
+        mediumGenerator.impactOccurred()
     }
 
     /// 强震动（警告/错误）
     func heavyImpact() {
-        let generator = UIImpactFeedbackGenerator(style: .heavy)
-        generator.impactOccurred()
+        heavyGenerator.impactOccurred()
     }
 
     /// 通知反馈（成功/失败/警告）
     func notificationFeedback(type: UINotificationFeedbackGenerator.FeedbackType) {
-        let generator = UINotificationFeedbackGenerator()
-        generator.notificationOccurred(type)
+        notificationGenerator.notificationOccurred(type)
     }
 
     /// 选择反馈（列表滚动/切换）
     func selectionFeedback() {
-        let generator = UISelectionFeedbackGenerator()
-        generator.selectionChanged()
+        selectionGenerator.selectionChanged()
     }
 
     /// 专注完成时的成功反馈

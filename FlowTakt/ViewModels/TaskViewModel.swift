@@ -50,6 +50,32 @@ final class TaskViewModel: ObservableObject {
             self?.loadTasks()
         }
         .store(in: &cancellables)
+
+        // 监听数据库重置通知，立即清空旧 ManagedObject 引用防止崩溃
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDatabaseReset),
+            name: .databaseDidReset,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Private
+
+    @objc private func handleDatabaseReset() {
+        // 立即清空已删除的 ManagedObject 引用
+        tasks = []
+        activeTasks = []
+        completedTasks = []
+        editingTask = nil
+        // 异步重新加载
+        DispatchQueue.main.async { [weak self] in
+            self?.loadTasks()
+        }
     }
 
     // MARK: - Public Methods
@@ -68,7 +94,7 @@ final class TaskViewModel: ObservableObject {
     ///   - estimatedPomodoros: 预计需要几个番茄钟
     ///   - priority: 优先级（1=低, 2=中, 3=高）
     ///   - dueDate: 截止日期（可选）
-    func createTask(title: String, notes: String?, estimatedPomodoros: Int16, priority: Int16, dueDate: Date?) {
+    func createTask(title: String, notes: String?, estimatedPomodoros: Int16, priority: Int16, dueDate: Date?, recurrenceRule: String? = nil) {
         guard !title.trimmingCharacters(in: .whitespaces).isEmpty else { return }
 
         _ = taskService.createTask(
@@ -76,7 +102,8 @@ final class TaskViewModel: ObservableObject {
             notes: notes,
             estimatedPomodoros: estimatedPomodoros,
             priority: priority,
-            dueDate: dueDate
+            dueDate: dueDate,
+            recurrenceRule: recurrenceRule
         )
 
         loadTasks()

@@ -52,6 +52,31 @@ final class TimeRecordViewModel: ObservableObject {
             self?.refreshTodayTotal()
         }
         .store(in: &cancellables)
+
+        // 监听数据库重置通知，立即清空旧 ManagedObject 引用防止崩溃
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDatabaseReset),
+            name: .databaseDidReset,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Private
+
+    @objc private func handleDatabaseReset() {
+        records = []
+        currentRecord = nil
+        isRecording = false
+        totalDurationToday = 0
+        DispatchQueue.main.async { [weak self] in
+            self?.loadRecords()
+            self?.refreshTodayTotal()
+        }
     }
 
     // MARK: - Public Methods

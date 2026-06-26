@@ -8,6 +8,9 @@ final class SettingsViewModel: ObservableObject {
     /// 数据库重置回调（由 AppDependency 注入）
     var onResetDatabase: (() -> Bool)?
 
+    /// 同步服务（构造时注入，避免后续破坏不可变性）
+    private let syncService: SyncServiceProtocol
+
     // MARK: - Published 属性
     @Published var focusDuration: TimeInterval {
         didSet { UserDefaults.standard.set(focusDuration, forKey: "focusDuration") }
@@ -42,7 +45,12 @@ final class SettingsViewModel: ObservableObject {
                 UserDefaults.standard.set(dailyReminderTime.minute, forKey: "reminderMinute") }
     }
     @Published var iCloudSyncEnabled: Bool = true {
-        didSet { UserDefaults.standard.set(iCloudSyncEnabled, forKey: "iCloudSyncEnabled") }
+        didSet {
+            UserDefaults.standard.set(iCloudSyncEnabled, forKey: "iCloudSyncEnabled")
+            if iCloudSyncEnabled {
+                syncService.forceSync()
+            }
+        }
     }
     @Published var autoStartBreaks: Bool = true {
         didSet { UserDefaults.standard.set(autoStartBreaks, forKey: "autoStartBreaks") }
@@ -68,7 +76,8 @@ final class SettingsViewModel: ObservableObject {
     let shortBreakOptions = AppConstants.shortBreakOptions
     let longBreakOptions = AppConstants.longBreakOptions
 
-    init() {
+    init(syncService: SyncServiceProtocol) {
+        self.syncService = syncService
         let defaults = UserDefaults.standard
 
         // 从 UserDefaults 加载或使用默认值
@@ -142,6 +151,11 @@ final class SettingsViewModel: ObservableObject {
         return onResetDatabase?() ?? false
     }
 
+    /// 手动触发 iCloud 同步（封装内部 syncService，避免暴露依赖）
+    func forceSync() {
+        syncService.forceSync()
+    }
+
     // MARK: - 私有方法
 
     private func scheduleDailyReminder() {
@@ -162,15 +176,4 @@ final class SettingsViewModel: ObservableObject {
 }
 
 // MARK: - 辅助
-
-private extension Int {
-    func nonZeroElse(_ fallback: Int) -> Int {
-        return self > 0 ? self : fallback
-    }
-}
-
-private extension Double {
-    func nonZeroElse(_ fallback: Double) -> Double {
-        return self > 0 ? self : fallback
-    }
-}
+// nonZeroElse 已提取到 Extensions/Numeric+Extensions.swift

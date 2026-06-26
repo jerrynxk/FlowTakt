@@ -117,7 +117,7 @@ final class TimeRecordService: TimeRecordServiceProtocol {
     func getDurationByProject(from: Date, to: Date) -> [(project: String, duration: Double)] {
         let records = fetchRecords(from: from, to: to)
         let grouped = Dictionary(grouping: records) { record -> String in
-            record.project ?? "未分类"
+            record.project ?? L10n.shared.未分类
         }
         return grouped.map { (project, records) in
             let total = records.reduce(0) { $0 + $1.duration }
