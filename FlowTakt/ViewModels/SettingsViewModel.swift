@@ -44,7 +44,7 @@ final class SettingsViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(dailyReminderTime.hour, forKey: "reminderHour")
                 UserDefaults.standard.set(dailyReminderTime.minute, forKey: "reminderMinute") }
     }
-    @Published var iCloudSyncEnabled: Bool = true {
+    @Published var iCloudSyncEnabled: Bool = false {
         didSet {
             UserDefaults.standard.set(iCloudSyncEnabled, forKey: "iCloudSyncEnabled")
             if iCloudSyncEnabled {
@@ -88,7 +88,7 @@ final class SettingsViewModel: ObservableObject {
         soundEnabled = defaults.object(forKey: "soundEnabled") as? Bool ?? true
         vibrationEnabled = defaults.object(forKey: "vibrationEnabled") as? Bool ?? true
         dailyReminderEnabled = defaults.object(forKey: "dailyReminderEnabled") as? Bool ?? false
-        iCloudSyncEnabled = defaults.object(forKey: "iCloudSyncEnabled") as? Bool ?? true
+        iCloudSyncEnabled = defaults.object(forKey: "iCloudSyncEnabled") as? Bool ?? false
         autoStartBreaks = defaults.object(forKey: "autoStartBreaks") as? Bool ?? true
         autoStartFocus = defaults.object(forKey: "autoStartFocus") as? Bool ?? false
         appLanguage = defaults.string(forKey: "appLanguage") ?? "zh-Hans"

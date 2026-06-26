@@ -147,6 +147,7 @@ final class PersistenceController: ObservableObject {
     init(inMemory: Bool = false) {
         // 检测测试环境：Xcode 运行测试时设置 XCTestConfigurationFilePath 环境变量
         let isTesting = inMemory || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        let isCloudSyncEnabled = !isTesting && UserDefaults.standard.bool(forKey: "iCloudSyncEnabled")
 
         container = NSPersistentCloudKitContainer(name: "FlowTakt")
 
@@ -156,30 +157,32 @@ final class PersistenceController: ObservableObject {
             description.type = NSInMemoryStoreType
             container.persistentStoreDescriptions = [description]
         } else {
-            // 配置 CloudKit 同步
+            // 配置 CloudKit 同步（仅当用户手动开启后才启用，避免启动即请求网络）
             guard let description = container.persistentStoreDescriptions.first else {
                 fatalError("无法获取持久化存储描述")
             }
 
-            // 设置 CloudKit 容器
-            description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
-                containerIdentifier: "iCloud.com.flowtakt"
-            )
+            if isCloudSyncEnabled {
+                // 设置 CloudKit 容器
+                description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
+                    containerIdentifier: "iCloud.com.flowtakt"
+                )
 
-            // 启用历史追踪（CloudKit 同步必需）
-            description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+                // 启用历史追踪（CloudKit 同步必需）
+                description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
 
-            // 启用远程变更通知（多设备同步）
-            description.setOption(true as NSNumber,
-                                  forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+                // 启用远程变更通知（多设备同步）
+                description.setOption(true as NSNumber,
+                                      forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
 
-            // 观察远程变更
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(handleRemoteChange(_:)),
-                name: .NSPersistentStoreRemoteChange,
-                object: container.persistentStoreCoordinator
-            )
+                // 观察远程变更
+                NotificationCenter.default.addObserver(
+                    self,
+                    selector: #selector(handleRemoteChange(_:)),
+                    name: .NSPersistentStoreRemoteChange,
+                    object: container.persistentStoreCoordinator
+                )
+            }
         }
 
         // 同步加载持久化存储，确保 init 返回前 store 已就绪（避免后续 save() 时 coordinator 为空崩溃）
@@ -189,8 +192,8 @@ final class PersistenceController: ObservableObject {
                 print("CoreData 加载失败：\(error), \(error.userInfo)")
                 // CloudKit 初始化失败时仍可本地使用
             }
-            // 仅非测试环境检查 iCloud 账户状态（测试环境中 CKContainer 初始化会崩溃）
-            if !isTesting {
+            // 仅已启用 CloudKit 时才检查 iCloud 账户
+            if isCloudSyncEnabled {
                 self?.checkCloudAccountStatus()
             }
             semaphore.signal()
@@ -268,15 +271,17 @@ final class PersistenceController: ObservableObject {
             newDescription.shouldMigrateStoreAutomatically = true
             newDescription.shouldInferMappingModelAutomatically = true
 
-            // 重新配置 CloudKit 同步（与 init 中保持一致）
-            newDescription.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
-                containerIdentifier: AppConstants.cloudKitContainerIdentifier
-            )
-            // 启用历史追踪（CloudKit 同步必需）
-            newDescription.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
-            // 启用远程变更通知（多设备同步）
-            newDescription.setOption(true as NSNumber,
-                                     forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+            // 重新配置 CloudKit 同步（与 init 中保持一致，仅当用户已开启同步）
+            if UserDefaults.standard.bool(forKey: "iCloudSyncEnabled") {
+                newDescription.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
+                    containerIdentifier: AppConstants.cloudKitContainerIdentifier
+                )
+                // 启用历史追踪（CloudKit 同步必需）
+                newDescription.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+                // 启用远程变更通知（多设备同步）
+                newDescription.setOption(true as NSNumber,
+                                         forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+            }
 
             // 替换容器描述并重新加载（同步等待，确保 store 就绪后再返回）
             container.persistentStoreDescriptions = [newDescription]
@@ -286,7 +291,9 @@ final class PersistenceController: ObservableObject {
                 if let error = error as NSError? {
                     print("重置后加载存储失败：\(error), \(error.userInfo)")
                 }
-                self?.checkCloudAccountStatus()
+                if UserDefaults.standard.bool(forKey: "iCloudSyncEnabled") {
+                    self?.checkCloudAccountStatus()
+                }
                 resetSemaphore.signal()
             }
             resetSemaphore.wait()

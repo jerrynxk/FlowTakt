@@ -399,7 +399,7 @@ final class L10n: ObservableObject {
     var 同步与数据: String { isEnglish ? "Sync & Data" : "同步与数据" }
     var iCloud同步: String { isEnglish ? "iCloud Sync" : "iCloud 同步" }
     var 立即同步: String { isEnglish ? "Sync Now" : "立即同步" }
-    var iCloud同步说明: String { isEnglish ? "Enable iCloud to sync data across devices via CloudKit" : "开启 iCloud 同步后，数据将通过 CloudKit 在多台设备间同步" }
+    var iCloud同步说明: String { isEnglish ? "Enable iCloud to sync data across devices via CloudKit. Requires app restart to take effect." : "开启 iCloud 同步后，需重新启动 App 方可生效，数据将通过 CloudKit 在多台设备间同步" }
     var 每日提醒: String { isEnglish ? "Daily Reminder" : "每日提醒" }
     var 每日提醒标题: String { isEnglish ? "Don't forget to focus today!" : "今天别忘了专注哦！" }
     var 每日提醒内容: String { isEnglish ? "Start your first pomodoro and have a productive day 🍅" : "开启今天的第一个番茄钟，开始高效的一天 🍅" }
