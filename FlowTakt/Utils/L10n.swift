@@ -175,23 +175,25 @@ final class L10n: ObservableObject {
         case "habit":
             return isEnglish ? (
                 "Build small, consistent habits. Set a daily target count and track your streak. "
-                + "Check off each completion in the timer tab. "
+                + "Check off each day you complete the habit. "
                 + "The app records your longest streak to keep you motivated."
             ) : (
                 "培养小而持续的习惯。设置每日目标次数并追踪连续打卡。\n"
-                + "在计时标签页中每次完成即可打卡。\n"
+                + "每天完成后点击打卡即可记录。\n"
                 + "应用会记录你的最长连续打卡天数，助你坚持。"
             )
 
         case "timer":
             return isEnglish ? (
-                "A standalone timer for activities that don't fit the Pomodoro format. "
-                + "Set a custom duration and tap start. "
-                + "The timer runs in the background and notifies you when time is up."
+                "A free-running timer for tracking activity duration. "
+                + "Tap start to begin recording — no preset duration needed. "
+                + "Optionally link a task and mark as billable. "
+                + "Tap stop when done and the duration is saved to your records."
             ) : (
-                "独立计时器，适用于不适合番茄钟格式的活动。\n"
-                + "自定义时长后点击开始。\n"
-                + "计时器在后台运行，时间到时会通知你。"
+                "自由计时器，用于记录活动时长。\n"
+                + "无需预设时长，点击即可开始计时。\n"
+                + "可选关联任务并标记为计费项目。\n"
+                + "完成后点击停止，时长自动保存到记录。"
             )
 
         case "stats":
@@ -400,6 +402,8 @@ final class L10n: ObservableObject {
     var iCloud同步: String { isEnglish ? "iCloud Sync" : "iCloud 同步" }
     var 立即同步: String { isEnglish ? "Sync Now" : "立即同步" }
     var iCloud同步说明: String { isEnglish ? "Enable iCloud to sync data across devices via CloudKit. Requires app restart to take effect." : "开启 iCloud 同步后，需重新启动 App 方可生效，数据将通过 CloudKit 在多台设备间同步" }
+    var 同步已触发: String { isEnglish ? "Sync request sent — changes will sync to iCloud" : "同步请求已发送" }
+    var 同步需先开启iCloud: String { isEnglish ? "Please enable iCloud Sync first" : "请先开启 iCloud 同步开关" }
     var 每日提醒: String { isEnglish ? "Daily Reminder" : "每日提醒" }
     var 每日提醒标题: String { isEnglish ? "Don't forget to focus today!" : "今天别忘了专注哦！" }
     var 每日提醒内容: String { isEnglish ? "Start your first pomodoro and have a productive day 🍅" : "开启今天的第一个番茄钟，开始高效的一天 🍅" }

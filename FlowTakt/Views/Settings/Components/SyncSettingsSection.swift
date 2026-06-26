@@ -5,6 +5,7 @@ struct SyncSettingsSection: View {
 
     @ObservedObject var viewModel: SettingsViewModel
     @Binding var showResetAlert: SettingsView.ResetAlertType?
+    @State private var syncMessage: String?
 
     var body: some View {
         Section {
@@ -19,9 +20,26 @@ struct SyncSettingsSection: View {
 
             // 手动同步按钮
             Button {
-                viewModel.forceSync()
+                if viewModel.iCloudSyncEnabled {
+                    viewModel.forceSync()
+                    syncMessage = L10n.shared.同步已触发
+                } else {
+                    syncMessage = L10n.shared.同步需先开启iCloud
+                }
+                // 3 秒后自动清除提示
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    syncMessage = nil
+                }
             } label: {
                 Label(L10n.shared.立即同步, systemImage: "arrow.triangle.2.circlepath")
+            }
+
+            // 同步反馈
+            if let message = syncMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Toggle(isOn: $viewModel.dailyReminderEnabled) {
