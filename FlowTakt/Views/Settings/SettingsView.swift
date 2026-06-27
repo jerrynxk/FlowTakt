@@ -32,7 +32,7 @@ struct SettingsView: View {
                             NotificationCenter.default.post(name: .databaseWillReset, object: nil)
                             // Phase 1: 等待一个 run loop 让 SwiftUI 处理 @Published 更新
                             // Phase 2: 再执行 store 销毁重建 + 发送 databaseDidReset 触发重新加载
-                            DispatchQueue.main.async {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                 let success = viewModel.resetDatabase()
                                 resetAlert = success ? .success : .failure
                             }
