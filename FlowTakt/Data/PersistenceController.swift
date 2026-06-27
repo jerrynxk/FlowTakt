@@ -6,6 +6,8 @@ import Combine
 // MARK: - 通知
 
 extension Notification.Name {
+    /// 数据库即将重置，所有 ViewModel 应立即清空 ManagedObject 引用
+    static let databaseWillReset = Notification.Name("com.flowtakt.databaseWillReset")
     /// 数据库已重置，所有 ViewModel 应重新加载数据
     static let databaseDidReset = Notification.Name("com.flowtakt.databaseDidReset")
 }
@@ -240,9 +242,11 @@ final class PersistenceController: ObservableObject {
     // MARK: - 数据库重置
 
     /// 重置数据库：销毁当前的所有持久化存储文件并重建空数据库（保留 CloudKit 同步配置）
-    /// - 销毁持久化存储（自动清理 SQLite 及 wal/shm 附属文件）
-    /// - 重新创建一个带 CloudKit 配置的全新空存储
-    /// - 重置所有上下文
+    /// 两阶段设计：
+    /// - Phase 0（调用前）: SettingsView 在调用此方法前先发 databaseWillReset 通知清空 VM 数据
+    /// - Phase 1: 销毁持久化存储（自动清理 SQLite 及 wal/shm 附属文件）
+    /// - Phase 2: 重新创建一个带 CloudKit 配置的全新空存储
+    /// - Phase 3: 发送 databaseDidReset 通知触发 VM 重新加载
     /// - Throws: 重置过程中的错误
     func resetDatabase() throws {
         let coordinator = container.persistentStoreCoordinator
@@ -251,7 +255,7 @@ final class PersistenceController: ObservableObject {
         try container.viewContext.performAndWait {
             let context = container.viewContext
 
-            // 1. 放弃未提交的变更（销毁数据库前不需要保存，保存反而可能因数据损坏抛 NSException 崩溃）
+            // 1. 放弃未提交的变更
             context.rollback()
 
             // 2. 获取当前存储的 URL
@@ -266,7 +270,7 @@ final class PersistenceController: ObservableObject {
                                                        options: nil)
             }
 
-            // 4. 重建带 CloudKit 配置的持久化存储描述
+            // 4. 重建持久化存储描述
             let newDescription = NSPersistentStoreDescription(url: storeURL)
             newDescription.shouldMigrateStoreAutomatically = true
             newDescription.shouldInferMappingModelAutomatically = true
@@ -276,9 +280,7 @@ final class PersistenceController: ObservableObject {
                 newDescription.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
                     containerIdentifier: AppConstants.cloudKitContainerIdentifier
                 )
-                // 启用历史追踪（CloudKit 同步必需）
                 newDescription.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
-                // 启用远程变更通知（多设备同步）
                 newDescription.setOption(true as NSNumber,
                                          forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
             }
@@ -304,8 +306,7 @@ final class PersistenceController: ObservableObject {
             print("✅ 数据库已成功重置：\(storeURL.lastPathComponent)")
         }
 
-        // 通知所有 ViewModel 同步清空旧数据（必须在 performAndWait 外同步发送，
-        // 确保 alert 切换和 SwiftUI layout 之前 VM 已完成清理，否则会崩溃）
+        // 通知所有 ViewModel 重新加载数据
         NotificationCenter.default.post(name: .databaseDidReset, object: nil)
     }
 

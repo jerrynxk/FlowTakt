@@ -54,7 +54,13 @@ final class TaskViewModel: ObservableObject {
         // 监听数据库重置通知，立即清空旧 ManagedObject 引用防止崩溃
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(handleDatabaseReset),
+            selector: #selector(handleDatabaseWillReset),
+            name: .databaseWillReset,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDatabaseDidReset),
             name: .databaseDidReset,
             object: nil
         )
@@ -66,12 +72,15 @@ final class TaskViewModel: ObservableObject {
 
     // MARK: - Private
 
-    @objc private func handleDatabaseReset() {
+    @objc private func handleDatabaseWillReset() {
         // 立即清空已删除的 ManagedObject 引用
         tasks = []
         activeTasks = []
         completedTasks = []
         editingTask = nil
+    }
+
+    @objc private func handleDatabaseDidReset() {
         // 异步重新加载
         DispatchQueue.main.async { [weak self] in
             self?.loadTasks()

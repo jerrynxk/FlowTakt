@@ -48,7 +48,13 @@ final class HabitViewModel: ObservableObject {
         // 监听数据库重置通知，立即清空旧 ManagedObject 引用防止崩溃
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(handleDatabaseReset),
+            selector: #selector(handleDatabaseWillReset),
+            name: .databaseWillReset,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDatabaseDidReset),
             name: .databaseDidReset,
             object: nil
         )
@@ -60,9 +66,12 @@ final class HabitViewModel: ObservableObject {
 
     // MARK: - Private
 
-    @objc private func handleDatabaseReset() {
+    @objc private func handleDatabaseWillReset() {
         habits = []
         selectedHabit = nil
+    }
+
+    @objc private func handleDatabaseDidReset() {
         DispatchQueue.main.async { [weak self] in
             self?.loadHabits()
         }

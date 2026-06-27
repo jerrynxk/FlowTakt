@@ -70,7 +70,13 @@ final class StatsViewModel: ObservableObject {
         // 监听数据库重置通知，立即清空旧 ManagedObject 引用防止崩溃
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(handleDatabaseReset),
+            selector: #selector(handleDatabaseWillReset),
+            name: .databaseWillReset,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDatabaseDidReset),
             name: .databaseDidReset,
             object: nil
         )
@@ -82,7 +88,7 @@ final class StatsViewModel: ObservableObject {
 
     // MARK: - Private Methods
 
-    @objc private func handleDatabaseReset() {
+    @objc private func handleDatabaseWillReset() {
         // 立即清空已删除的 ManagedObject 引用
         todaySessions = []
         weeklyData = []
@@ -91,6 +97,9 @@ final class StatsViewModel: ObservableObject {
         currentStreak = 0
         todayDuration = 0
         completionRate = 0
+    }
+
+    @objc private func handleDatabaseDidReset() {
         // 异步重新加载
         DispatchQueue.main.async { [weak self] in
             self?.refresh()

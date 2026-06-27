@@ -28,11 +28,12 @@ struct SettingsView: View {
                         title: Text(L10n.shared.重置数据库),
                         message: Text(L10n.shared.重置数据库确认提示),
                         primaryButton: .destructive(Text(L10n.shared.确认重置)) {
-                            let success = viewModel.resetDatabase()
-                            // 延迟到下一个 run loop，确保所有 ViewModel 的 @Published 更新
-                            // 已通知到 SwiftUI 视图层，避免 alert 切换时的 layout pass
-                            // 访问到已删除的 NSManagedObject
+                            // Phase 0: 先通知所有 VM 清空数据（store 仍在，ForEach diff 安全）
+                            NotificationCenter.default.post(name: .databaseWillReset, object: nil)
+                            // Phase 1: 等待一个 run loop 让 SwiftUI 处理 @Published 更新
+                            // Phase 2: 再执行 store 销毁重建 + 发送 databaseDidReset 触发重新加载
                             DispatchQueue.main.async {
+                                let success = viewModel.resetDatabase()
                                 resetAlert = success ? .success : .failure
                             }
                         },

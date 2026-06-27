@@ -51,10 +51,14 @@ final class FocusViewModel: ObservableObject {
 
     // MARK: - Private: Database Reset
 
-    @objc private func handleDatabaseReset() {
+    @objc private func handleDatabaseWillReset() {
         // 立即清空已删除的 ManagedObject 引用
         currentSession = nil
         selectedTask = nil
+    }
+
+    @objc private func handleDatabaseDidReset() {
+        // No persistent data to reload for current session state
     }
     private var durationForPhase: TimeInterval = AppConstants.defaultFocusDuration
     private var wasWhiteNoiseOnBeforePause = false
@@ -116,7 +120,13 @@ final class FocusViewModel: ObservableObject {
         // 监听数据库重置通知，立即清空旧 ManagedObject 引用防止崩溃
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(handleDatabaseReset),
+            selector: #selector(handleDatabaseWillReset),
+            name: .databaseWillReset,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDatabaseDidReset),
             name: .databaseDidReset,
             object: nil
         )
