@@ -51,7 +51,7 @@ struct HabitListView: View {
             var dict: [UUID: [HabitRecord]] = [:]
             for habit in habitViewModel.habits {
                 let records = habitViewModel.records(for: habit, in: 1).filter { $0.date.isToday }
-                dict[habit.id ?? UUID()] = records
+                dict[habit.id] = records
             }
             return dict
         }()
@@ -60,7 +60,7 @@ struct HabitListView: View {
             ForEach(habitViewModel.habits) { habit in
                 HabitRowView(
                     habit: habit,
-                    todayRecords: todayRecordsByHabit[habit.id ?? UUID()] ?? []
+                    todayRecords: todayRecordsByHabit[habit.id] ?? []
                 )
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {

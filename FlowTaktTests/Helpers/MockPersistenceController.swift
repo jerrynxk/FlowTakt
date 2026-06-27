@@ -17,24 +17,8 @@ final class MockPersistenceController {
     }
 
     init() {
-        // 使用 NSManagedObjectModel 合并所有实体的 .mom 文件
-        guard let momURL = Bundle.main.url(forResource: "FlowTakt", withExtension: "momd"),
-              let managedObjectModel = NSManagedObjectModel(contentsOf: momURL) else {
-            // Fallback: 如果找不到 momd 文件（测试中可能未添加资源），
-            // 使用内存自动生成的 managedObjectModel
-            container = NSPersistentContainer(name: "FlowTakt")
-            container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
-
-            container.loadPersistentStores { _, error in
-                if let error = error {
-                    fatalError("MockPersistenceController 初始化失败: \(error)")
-                }
-            }
-            container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
-            return
-        }
-
-        container = NSPersistentContainer(name: "FlowTakt", managedObjectModel: managedObjectModel)
+        container = NSPersistentContainer(name: "FlowTakt")
+        container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
         container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
 
         container.loadPersistentStores { _, error in
