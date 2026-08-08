@@ -177,4 +177,4 @@ FlowTakt/
 ## 联系
 
 - App Store: [FlowTakt 流刻](https://apps.apple.com/app/flowtakt/id6778738267)
-- 反馈与建议: dlyzh_0303@qq.com
+- 反馈与建议: 33888833@qq.com
