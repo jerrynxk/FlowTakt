@@ -13,7 +13,6 @@ struct TaskCreateView: View {
     @State private var priority: Int16 = 2
     @State private var hasDueDate: Bool = false
     @State private var dueDate: Date = Date().addingTimeInterval(86400)
-    @State private var isSaving: Bool = false
     @State private var hasRecurrence: Bool = false
     @State private var recurrenceRule: String = "none"
 
@@ -123,7 +122,6 @@ struct TaskCreateView: View {
                     Button(L10n.shared.取消) {
                         dismiss()
                     }
-                    .disabled(isSaving)
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
@@ -131,7 +129,7 @@ struct TaskCreateView: View {
                         saveTask()
                     }
                     .fontWeight(.semibold)
-                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
             .interactiveDismissDisabled(title.trimmingCharacters(in: .whitespaces).isEmpty == false)
@@ -143,7 +141,6 @@ struct TaskCreateView: View {
     private func saveTask() {
         guard !title.trimmingCharacters(in: .whitespaces).isEmpty else { return }
 
-        isSaving = true
         taskViewModel.createTask(
             title: title.trimmingCharacters(in: .whitespaces),
             notes: notes.trimmingCharacters(in: .whitespaces).isEmpty ? nil : notes,
@@ -152,9 +149,6 @@ struct TaskCreateView: View {
             dueDate: hasDueDate ? dueDate : nil,
             recurrenceRule: hasRecurrence ? recurrenceRule : nil
         )
-        // 保存后恢复 isSaving 状态（taskViewModel 内部不会主动恢复）
-        // dismiss 由 taskViewModel.showCreateSheet = false 触发
-        isSaving = false
     }
 }
 

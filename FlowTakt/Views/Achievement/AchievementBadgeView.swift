@@ -126,10 +126,12 @@ struct AchievementBadgeView: View {
     // MARK: - 辅助
 
     private var accessibilityLabel: String {
+        // 审查修复（2026-08-12）：用 L10n 本地化标题替代 DB 中文（英文模式下 VoiceOver 不再读中文）
+        let title = L10n.shared.achievementTitle(achievement.identifier)
         if isUnlocked {
-            return "\(achievement.title), \(L10n.shared.unlocked)"
+            return "\(title), \(L10n.shared.unlocked)"
         } else {
-            return "\(achievement.title), \(L10n.shared.locked)"
+            return "\(title), \(L10n.shared.locked)"
         }
     }
 }
@@ -148,10 +150,6 @@ extension Achievement {
         case .special:
             return Color.focusRed
         }
-    }
-
-    var categoryDisplayName: String {
-        L10n.shared.achievementCategory(category)
     }
 
     private var categoryEnum: AchievementCategory {
@@ -173,12 +171,9 @@ struct AchievementBadgeView_Previews: PreviewProvider {
         }
         .environmentObject(AchievementViewModel(
             achievementService: AchievementService(
-                persistenceController: PersistenceController.shared,
-                focusService: FocusService(
-                    persistenceController: PersistenceController.shared,
-                    notificationService: NotificationService()
-                )
-            )
+                persistenceController: PersistenceController.shared
+            ),
+            persistenceController: PersistenceController.shared
         ))
         .padding()
         .background(Color.appBackground)

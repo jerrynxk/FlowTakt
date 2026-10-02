@@ -16,7 +16,10 @@ extension Color {
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
+        guard Scanner(string: hex).scanHexInt64(&int) else {
+            self.init(.sRGB, red: 0, green: 0, blue: 0, opacity: 1)
+            return
+        }
         let a, r, g, b: UInt64
         switch hex.count {
         case 3: // RGB (12-bit)
@@ -57,16 +60,6 @@ extension Color {
         case 3: return .red
         case 2: return .orange
         default: return .secondary
-        }
-    }
-
-    /// 根据会话状态返回颜色
-    static func forSessionStatus(_ status: SessionStatus) -> Color {
-        switch status {
-        case .completed: return .green
-        case .interrupted: return .orange
-        case .abandoned: return .red
-        case .running: return .blue
         }
     }
 }

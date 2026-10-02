@@ -24,15 +24,47 @@ enum ScheduleColor: String, CaseIterable {
     }
 }
 
+// MARK: - EventData
+
+/// 封装事件编辑的所有数据字段，替代原本 10 个参数的 closure
+struct EventData {
+    var title: String
+    var startDate: Date
+    var endDate: Date?
+    var isAllDay: Bool
+    var location: String?
+    var notes: String?
+    var colorHex: String?
+    var category: ScheduleCategory
+    var reminderEnabled: Bool
+    var reminderLeadMinutes: Int
+}
+
 // MARK: - EventEditView
+
+/// 提前提醒时间预设（分钟）
+fileprivate let reminderLeadPresets: [Int] = [0, 5, 10, 15, 30, 60, 1440, 2880, 10080]
+
+/// 根据提前分钟数生成本地化的提醒标签
+fileprivate func reminderLeadLabel(minutes: Int) -> String {
+    switch minutes {
+    case 0: return L10n.shared.准时
+    case 60: return L10n.shared.提前一小时
+    case 1440: return L10n.shared.提前一天
+    case 2880: return L10n.shared.提前两天
+    case 10080: return L10n.shared.提前一周
+    default: return L10n.shared.提前分钟(minutes)
+    }
+}
 
 /// 日程事件编辑视图（从 ScheduleView 拆分出来以控制文件行数）
 struct EventEditView: View {
     @Binding var isPresented: Bool
+    @EnvironmentObject var l10n: L10n
 
     let editingEvent: ScheduleItem?
     let initialDate: Date
-    let onSave: (String, Date, Date?, Bool, String?, String?, String?) -> Void
+    let onSave: (EventData) -> Void
 
     @State private var title: String = ""
     @State private var startDate: Date = Date()
@@ -42,6 +74,13 @@ struct EventEditView: View {
     @State private var location: String = ""
     @State private var notes: String = ""
     @State private var selectedColor: ScheduleColor = .red
+
+    // 提醒相关状态
+    @State private var category: ScheduleCategory = .event
+    @State private var reminderEnabled: Bool = false
+    @State private var reminderLeadIndex: Int = 0
+    /// 审查修复（2026-08-12）：编辑时提醒分钟数不在预设列表时保留原值（自定义选项）
+    @State private var customReminderLead: Int?
 
     @FocusState private var focusedField: Field?
 
@@ -58,7 +97,7 @@ struct EventEditView: View {
         isPresented: Binding<Bool>,
         editingEvent: ScheduleItem?,
         initialDate: Date,
-        onSave: @escaping (String, Date, Date?, Bool, String?, String?, String?) -> Void
+        onSave: @escaping (EventData) -> Void
     ) {
         self._isPresented = isPresented
         self.editingEvent = editingEvent
@@ -76,6 +115,17 @@ struct EventEditView: View {
             _selectedColor = State(
                 initialValue: ScheduleColor.allCases.first(where: { $0.rawValue == event.colorHex }) ?? .red
             )
+            _category = State(initialValue: event.categoryEnum)
+            _reminderEnabled = State(initialValue: event.reminderEnabled)
+            let lead = event.reminderLeadMinutesInt
+            // 审查修复（2026-08-12）：编辑时若提醒分钟数不在预设列表，不再静默回退到 index 0
+            //（否则保存会把自定义提醒静默改成「准时」）；改为追加一个自定义选项并保留原值
+            if let idx = reminderLeadPresets.firstIndex(of: lead) {
+                _reminderLeadIndex = State(initialValue: idx)
+            } else {
+                _reminderLeadIndex = State(initialValue: reminderLeadPresets.count)
+                _customReminderLead = State(initialValue: lead)
+            }
         } else {
             // Default start time: selected date at current hour
             let calendar = Calendar.current
@@ -126,6 +176,37 @@ struct EventEditView: View {
                     }
 
                     Toggle(L10n.shared.全天, isOn: $isAllDay)
+                }
+
+                // 类型
+                Section(L10n.shared.类型) {
+                    Picker(L10n.shared.类型, selection: $category) {
+                        ForEach(ScheduleCategory.allCases) { cat in
+                            Label(cat.displayName, systemImage: cat.iconName).tag(cat)
+                        }
+                    }
+                }
+
+                // 提醒
+                Section {
+                    Toggle(L10n.shared.提醒, isOn: $reminderEnabled)
+
+                    if reminderEnabled {
+                        Picker(L10n.shared.提前提醒, selection: $reminderLeadIndex) {
+                            ForEach(reminderLeadPresets.indices, id: \.self) { index in
+                                Text(reminderLeadLabel(minutes: reminderLeadPresets[index])).tag(index)
+                            }
+                            // 审查修复：自定义分钟数不在预设列表时保留原值
+                            if let custom = customReminderLead {
+                                Text(reminderLeadLabel(minutes: custom)).tag(reminderLeadPresets.count)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                } header: {
+                    Text(L10n.shared.提醒设置标题)
+                } footer: {
+                    Text(L10n.shared.提醒设置说明)
                 }
 
                 // Location
@@ -208,7 +289,8 @@ struct EventEditView: View {
                     .disabled(!isValid)
                 }
             }
-            .environment(\.locale, Locale.current)
+            // 让 DatePicker 跟随应用内语言（而非强制设备语言），与 App 中英切换一致
+            .environment(\.locale, Locale(identifier: L10n.shared.appLanguage))
         }
     }
 
@@ -218,8 +300,27 @@ struct EventEditView: View {
         let trimmedLocation = location.trimmingCharacters(in: .whitespaces).isEmpty ? nil : location.trimmingCharacters(in: .whitespaces)
         let trimmedNotes = notes.trimmingCharacters(in: .whitespaces).isEmpty ? nil : notes.trimmingCharacters(in: .whitespaces)
         let finalEndDate = hasEndDate ? endDate : nil
+        // 审查修复：自定义分钟数优先于预设索引，避免静默改写用户设置
+        let leadMinutes: Int
+        if let custom = customReminderLead, reminderLeadIndex == reminderLeadPresets.count {
+            leadMinutes = custom
+        } else {
+            leadMinutes = reminderLeadPresets[reminderLeadIndex]
+        }
 
-        onSave(trimmedTitle, startDate, finalEndDate, isAllDay, trimmedLocation, trimmedNotes, selectedColor.rawValue)
+        let data = EventData(
+            title: trimmedTitle,
+            startDate: startDate,
+            endDate: finalEndDate,
+            isAllDay: isAllDay,
+            location: trimmedLocation,
+            notes: trimmedNotes,
+            colorHex: selectedColor.rawValue,
+            category: category,
+            reminderEnabled: reminderEnabled,
+            reminderLeadMinutes: leadMinutes
+        )
+        onSave(data)
         isPresented = false
     }
 }

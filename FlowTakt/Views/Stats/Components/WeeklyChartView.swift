@@ -30,17 +30,19 @@ struct WeeklyChartView: View {
             .padding(.horizontal, 16)
             .padding(.top, 16)
 
-            // 柱状图
+            // 柱状图（DailyStats 为 Identifiable，id 即日期，避免索引作 id 的错位风险）
             HStack(alignment: .bottom, spacing: 0) {
-                ForEach(Array(statsViewModel.weeklyData.enumerated()), id: \.offset) { index, dailyStat in
-                    let isToday = index == statsViewModel.weeklyData.count - 1
+                ForEach(statsViewModel.weeklyData) { dailyStat in
+                    let isToday = Calendar.current.isDateInToday(dailyStat.date)
                     let maxPomodoros = statsViewModel.weeklyData.map(\.completedPomodoros).max() ?? 1
                     let ratio = maxPomodoros > 0
                         ? CGFloat(dailyStat.completedPomodoros) / CGFloat(maxPomodoros)
                         : 0
                     let barHeight = max(barMinHeight, ratio * barMaxHeight)
-                    // 防御性检查：避免 dayLabels 越界崩溃
-                    let dayLabel = dayLabels.indices.contains(index) ? dayLabels[index] : ""
+                    // 从日期推导星期标签（周一开头，weekday 1=Sun..7=Sat），防御越界
+                    let weekday = Calendar.current.component(.weekday, from: dailyStat.date)
+                    let labelIndex = (weekday + 5) % 7
+                    let dayLabel = dayLabels.indices.contains(labelIndex) ? dayLabels[labelIndex] : ""
 
                     VStack(spacing: 6) {
                         // 数值（柱顶）
@@ -72,7 +74,7 @@ struct WeeklyChartView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(dayLabel)：\(dailyStat.completedPomodoros) 个番茄钟")
+                    .accessibilityLabel(L10n.shared.dayPomodoros(dayLabel, count: dailyStat.completedPomodoros))
                 }
             }
             .padding(.horizontal, 12)

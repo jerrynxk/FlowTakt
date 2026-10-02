@@ -103,5 +103,6 @@ private struct GuideRow: View {
 #Preview {
     NavigationStack {
         UsageGuideView()
+            .environmentObject(L10n.shared)
     }
 }

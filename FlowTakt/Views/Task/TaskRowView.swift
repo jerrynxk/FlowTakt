@@ -5,6 +5,7 @@ import CoreData
 
 struct TaskRowView: View {
     let task: Task
+    @EnvironmentObject var l10n: L10n
 
     var body: some View {
         HStack(spacing: 12) {
@@ -44,6 +45,8 @@ struct TaskRowView: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityRowLabel)
     }
 
     // MARK: - Priority Dot
@@ -100,11 +103,24 @@ struct TaskRowView: View {
 
     // MARK: - Helpers
 
+    private var accessibilityRowLabel: String {
+        let statusText = task.isCompleted ? L10n.shared.已完成 : L10n.shared.进行中
+        // 无障碍修复（2026-08-12）：label 并入番茄进度与截止日期，避免 combine 后丢失子文本信息
+        var parts = [task.title, statusText]
+        if task.estimatedPomodoros > 0 {
+            parts.append("\(L10n.shared.番茄进度(Int(task.completedPomodoros), Int(task.estimatedPomodoros)))")
+        }
+        if let due = task.dueDate {
+            parts.append(formattedDueDate(due))
+        }
+        return parts.joined(separator: "，")
+    }
+
     private func formattedDueDate(_ date: Date) -> String {
         if date.isToday {
-            return "今天"
+            return L10n.shared.今日
         } else if date.isYesterday {
-            return "昨天"
+            return L10n.shared.昨日
         } else {
             return date.shortDateString
         }
@@ -114,19 +130,25 @@ struct TaskRowView: View {
 // MARK: - Preview
 
 #Preview {
-    let context = PersistenceController.preview.viewContext
-    let task = Task(context: context)
-    task.id = UUID()
-    task.title = "完成项目报告"
-    task.estimatedPomodoros = 4
-    task.completedPomodoros = 1
-    task.priority = 3
-    task.status = TaskStatus.active.rawValue
-    task.dueDate = Date()
-    task.createdAt = Date()
-    task.updatedAt = Date()
-
-    return TaskRowView(task: task)
+    TaskRowView(task: TaskRowView.previewTask())
         .padding(.horizontal)
-        .environment(\.managedObjectContext, context)
+        .environmentObject(L10n.shared)
+}
+
+extension TaskRowView {
+    /// Preview 用：创建一个示例任务（ViewBuilder 闭包内不允许赋值语句）
+    static func previewTask() -> Task {
+        let context = PersistenceController.preview.viewContext
+        let task = Task(context: context)
+        task.id = UUID()
+        task.title = "完成项目报告"
+        task.estimatedPomodoros = 4
+        task.completedPomodoros = 1
+        task.priority = 3
+        task.status = TaskStatus.active.rawValue
+        task.dueDate = Date()
+        task.createdAt = Date()
+        task.updatedAt = Date()
+        return task
+    }
 }

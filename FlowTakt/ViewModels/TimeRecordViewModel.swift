@@ -47,6 +47,7 @@ final class TimeRecordViewModel: ObservableObject {
             object: viewContext
         )
         .receive(on: DispatchQueue.main)
+        .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
         .sink { [weak self] _ in
             self?.loadRecords()
             self?.refreshTodayTotal()
@@ -102,6 +103,8 @@ final class TimeRecordViewModel: ObservableObject {
     ///   - project: 项目名称（可选）
     ///   - tag: 标签（可选）
     func startRecording(task: Task? = nil, note: String? = nil, project: String? = nil, tag: Tag? = nil) {
+        // 防重：正在录制时忽略重复调用，避免覆盖 currentRecord 导致前一条记录永不停表
+        guard !isRecording else { return }
         let record = timeRecordService.startRecording(task: task, note: note, project: project, tag: tag)
         currentRecord = record
         isRecording = true
@@ -136,7 +139,8 @@ final class TimeRecordViewModel: ObservableObject {
     func refreshTodayTotal() {
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: selectedDate)
-        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        // 审查修复（2026-08-12）：guard 替代强制解包
+        guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else { return }
         totalDurationToday = timeRecordService.getTotalDuration(from: startOfDay, to: endOfDay)
     }
 }

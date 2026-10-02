@@ -3,9 +3,12 @@ import Foundation
 // MARK: - 农历日历工具
 
 /// 农历日期工具，基于系统 Chinese Calendar 实现
+/// 审查说明（2026-08-12）：iOS 16 部署目标下 Calendar.Component.isLeapMonth 不可用
+/// （仅 iOS 17+ 提供），闰月无「闰」前缀为有意降级（#available 已保护，不会崩溃）。
 struct LunarCalendar {
 
-    /// 农历月份名称
+    /// 农历月份名称（1-based; [0] 为空占位）
+    /// 注意：与 Date+Extensions.swift 中的 lunarMonths 数组重复。LunarCalendar 弃用后将统一到 Date+Extensions。
     private static let monthNames = [
         "", "正月", "二月", "三月", "四月", "五月", "六月",
         "七月", "八月", "九月", "十月", "冬月", "腊月"
@@ -21,16 +24,14 @@ struct LunarCalendar {
         "廿六", "廿七", "廿八", "廿九", "三十"
     ]
 
-    /// 干支年
-    private static let tianGan = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]
-    private static let diZhi   = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
-    private static let shengXiao = ["鼠", "牛", "虎", "兔", "龙", "蛇", "马", "羊", "猴", "鸡", "狗", "猪"]
+    /// 农历专用日历（缓存）
+    private static let calendar = Calendar(identifier: .chinese)
 
     // MARK: - 公开方法
 
     /// 将公历日期转换为农历日期字符串（如"冬月初九"）
     static func lunarDateString(from date: Date) -> String? {
-        let calendar = Calendar(identifier: .chinese)
+        let calendar = Self.calendar
 
         var componentSet: Set<Calendar.Component> = [.year, .month, .day]
         if #available(iOS 17, *) {
@@ -60,32 +61,5 @@ struct LunarCalendar {
         }
 
         return "\(monthName)\(dayNames[day])"
-    }
-
-    /// 获取干支纪年字符串（如"甲辰"）
-    static func ganzhiYear(from date: Date) -> String? {
-        let calendar = Calendar(identifier: .chinese)
-        let year = calendar.component(.year, from: date)
-        let tgIndex = (year - 1) % 10
-        let dzIndex = (year - 1) % 12
-        return "\(tianGan[tgIndex])\(diZhi[dzIndex])"
-    }
-
-    /// 获取生肖
-    static func shengXiao(from date: Date) -> String? {
-        let calendar = Calendar(identifier: .chinese)
-        let year = calendar.component(.year, from: date)
-        let index = (year - 1) % 12
-        return shengXiao[index]
-    }
-
-    /// 获取完整的农历日期信息（干支年 + 生肖 + 月 + 日）
-    static func fullLunarString(from date: Date) -> String? {
-        guard let lunarDate = lunarDateString(from: date),
-              let ganzhi = ganzhiYear(from: date),
-              let animal = shengXiao(from: date) else {
-            return nil
-        }
-        return "\(ganzhi)\(animal)年 \(lunarDate)"
     }
 }

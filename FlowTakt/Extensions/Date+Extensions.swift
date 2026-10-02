@@ -3,28 +3,39 @@ import Foundation
 // MARK: - 日期扩展
 
 extension Date {
-    /// 获取今天的起始时间（00:00:00）
+    // MARK: - 缓存
+
+    /// 农历专用日历
+    private static let chineseCalendar = Calendar(identifier: .chinese)
+
+    /// 简短日期格式化器 (MM/dd)
+    private static let shortDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MM/dd"
+        return f
+    }()
+
+    /// 完整日期格式化器 (yyyy/MM/dd)
+    private static let fullDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy/MM/dd"
+        return f
+    }()
+
+    // MARK: - 日期计算
     var startOfDay: Date {
         Calendar.current.startOfDay(for: self)
     }
 
-    /// 获取今天的结束时间（23:59:59）
+    /// 获取今天的结束边界：返回「次日 00:00:00」（半开区间语义）。
+    /// 区间判断应使用 `date >= startOfDay && date < endOfDay`，
+    /// 避免旧实现（23:59:59.0）漏掉当天最后一秒内的记录。
     var endOfDay: Date {
         let start = startOfDay
         guard let nextDay = Calendar.current.date(byAdding: .day, value: 1, to: start) else {
-            return start.addingTimeInterval(86399)
+            return start.addingTimeInterval(86400)
         }
-        return nextDay.addingTimeInterval(-1)
-    }
-
-    /// 获取本周的起始时间（周一 00:00:00）
-    var startOfWeek: Date {
-        let calendar = Calendar.current
-        let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: self)
-        guard let date = calendar.date(from: components) else {
-            return startOfDay
-        }
-        return date
+        return nextDay
     }
 
     /// 获取本月的起始时间
@@ -39,23 +50,12 @@ extension Date {
 
     /// 格式化为简短日期字符串
     var shortDateString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MM/dd"
-        return formatter.string(from: self)
+        Self.shortDateFormatter.string(from: self)
     }
 
     /// 格式化为完整日期字符串
     var fullDateString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy/MM/dd"
-        return formatter.string(from: self)
-    }
-
-    /// 格式化为时间字符串（HH:mm）
-    var timeString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: self)
+        Self.fullDateFormatter.string(from: self)
     }
 
     /// 今天是否与另一个日期位于同一天
@@ -80,8 +80,7 @@ extension Date {
 
     /// 农历日名称（如初一、十五、廿三等）
     var lunarDayText: String {
-        let chineseCalendar = Calendar(identifier: .chinese)
-        let day = chineseCalendar.component(.day, from: self)
+        let day = Self.chineseCalendar.component(.day, from: self)
 
         let lunarDayNames = [
             "初一", "初二", "初三", "初四", "初五", "初六", "初七", "初八", "初九", "初十",
@@ -95,8 +94,7 @@ extension Date {
 
     /// 农历月份名（正月、二月...冬月、腊月）
     var lunarMonthText: String {
-        let chineseCalendar = Calendar(identifier: .chinese)
-        let month = chineseCalendar.component(.month, from: self)
+        let month = Self.chineseCalendar.component(.month, from: self)
 
         let lunarMonths = [
             "正月", "二月", "三月", "四月", "五月", "六月",
@@ -109,8 +107,7 @@ extension Date {
 
     /// 日历格中显示的农历文本（初一显示月份名，其余显示日名）
     var lunarCellText: String {
-        let chineseCalendar = Calendar(identifier: .chinese)
-        let day = chineseCalendar.component(.day, from: self)
+        let day = Self.chineseCalendar.component(.day, from: self)
         return day == 1 ? lunarMonthText : lunarDayText
     }
 }

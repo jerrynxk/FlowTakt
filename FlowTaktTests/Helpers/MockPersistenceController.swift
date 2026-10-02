@@ -1,13 +1,17 @@
 import Foundation
 import CoreData
 
+@testable import FlowTakt
+
 // MARK: - MockPersistenceController
 // 用于单元测试的内存 CoreData Stack
 // 每个测试用例应当创建独立实例确保测试隔离
 //
 // Xcode Target 配置:
 // - 添加至 FlowTaktTests Target
-// - 需将 FlowTakt.xcdatamodeld 加入 Test Target 的 Bundle Resources
+// - 模型复用 PersistenceController.sharedManagedObjectModel（App Bundle 内），
+//   不再需要将 FlowTakt.xcdatamodeld 加入 Test Target 的 Bundle Resources，
+//   同时避免测试进程中加载两份同名模型导致实体描述重复噪声
 
 final class MockPersistenceController {
     let container: NSPersistentContainer
@@ -17,8 +21,8 @@ final class MockPersistenceController {
     }
 
     init() {
-        container = NSPersistentContainer(name: "FlowTakt")
-        container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
+        container = NSPersistentContainer(name: "FlowTakt",
+                                          managedObjectModel: PersistenceController.sharedManagedObjectModel)
         container.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
 
         container.loadPersistentStores { _, error in
@@ -31,6 +35,7 @@ final class MockPersistenceController {
     }
 
     /// 创建全新的上下文（测试隔离用）
+    /// 预留方法，当前测试未使用
     func newChildContext() -> NSManagedObjectContext {
         let context = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
         context.parent = container.viewContext

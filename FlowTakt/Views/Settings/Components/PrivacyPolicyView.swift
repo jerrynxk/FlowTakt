@@ -4,10 +4,21 @@ import SwiftUI
 
 struct PrivacyPolicyView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var l10n: L10n
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                // 在线版链接（审核与用户可访问的托管页面，C1）
+                if let url = URL(string: AppConstants.privacyPolicyURL) {
+                    Link(destination: url) {
+                        Label(L10n.shared.在线查看隐私政策, systemImage: "safari")
+                            .font(.subheadline)
+                            .foregroundColor(.focusRed)
+                    }
+                    .padding(.bottom, 4)
+                }
+
                 // 最后更新日期
                 Text(L10n.shared.最后更新日期)
                     .font(.caption)
@@ -108,5 +119,6 @@ struct PrivacyPolicyView: View {
 #Preview {
     NavigationStack {
         PrivacyPolicyView()
+            .environmentObject(L10n.shared)
     }
 }

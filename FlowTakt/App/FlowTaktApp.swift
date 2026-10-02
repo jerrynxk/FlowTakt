@@ -24,6 +24,9 @@ struct FlowTaktApp: App {
                     // 应用首次启动时初始化通知权限和 iCloud 同步
                     dependency.setupApp()
                 }
+                .onOpenURL { url in
+                    dependency.handleDeepLink(url)
+                }
         }
         .onChange(of: scenePhase) { newPhase in
             if newPhase == .active {

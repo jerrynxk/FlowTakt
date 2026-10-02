@@ -10,6 +10,8 @@ struct DateSectionHeader: View {
             Image(systemName: iconName)
                 .font(.caption)
                 .foregroundColor(.secondary)
+                // 无障碍修复（2026-08-12）：装饰图标不单独朗读（标题文本已说明）
+                .accessibilityHidden(true)
             Text(headerText)
                 .font(.subheadline)
                 .fontWeight(.semibold)
@@ -25,9 +27,9 @@ struct DateSectionHeader: View {
 
     private var headerText: String {
         if date.isToday {
-            return "今天"
+            return L10n.shared.今日
         } else if date.isYesterday {
-            return "昨天"
+            return L10n.shared.昨日
         } else {
             let calendar = Calendar.current
             if calendar.isDate(date, equalTo: Date(), toGranularity: .year) {

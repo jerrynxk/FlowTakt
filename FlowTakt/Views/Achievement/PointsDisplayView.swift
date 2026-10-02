@@ -74,12 +74,9 @@ struct PointsDisplayView_Previews: PreviewProvider {
         PointsDisplayView()
             .environmentObject(AchievementViewModel(
                 achievementService: AchievementService(
-                    persistenceController: PersistenceController.shared,
-                    focusService: FocusService(
-                        persistenceController: PersistenceController.shared,
-                        notificationService: NotificationService()
-                    )
-                )
+                persistenceController: PersistenceController.shared
+            ),
+                persistenceController: PersistenceController.shared
             ))
             .padding()
             .background(Color.appBackground)

@@ -70,8 +70,21 @@ struct SyncSettingsSection: View {
     private var formattedReminderTime: String {
         let hour = viewModel.dailyReminderTime.hour ?? 9
         let minute = viewModel.dailyReminderTime.minute ?? 0
-        return String(format: "%02d:%02d", hour, minute)
+        var comps = DateComponents()
+        comps.hour = hour
+        comps.minute = minute
+        // 审查修复（2026-08-12）：改用 DateFormatter 跟随 locale（12/24 小时制），替代硬编码 "%02d:%02d"
+        let date = Calendar.current.date(from: comps) ?? Date()
+        return Self.timeFormatter.string(from: date)
     }
+
+    /// 时间格式化器（static 缓存，跟随 locale）
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .none
+        f.timeStyle = .short
+        return f
+    }()
 }
 
 #Preview {

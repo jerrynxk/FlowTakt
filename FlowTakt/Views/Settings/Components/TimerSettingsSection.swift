@@ -5,12 +5,10 @@ struct TimerSettingsSection: View {
 
     @ObservedObject var viewModel: SettingsViewModel
 
-    /// 将 TimeInterval（秒）格式化为可读的分钟文本
+    /// 将 TimeInterval（秒）格式化为可读的分钟文本（审查修复：走 L10n 双语键）
     private func formattedDuration(_ seconds: TimeInterval) -> Text {
         let minutes = Int(seconds) / 60
-        return L10n.shared.isEnglish
-            ? Text("\(minutes) min")
-            : Text("\(minutes) 分钟")
+        return Text(L10n.shared.分钟(minutes))
     }
 
     var body: some View {
@@ -70,11 +68,9 @@ struct TimerSettingsSection: View {
         }
     }
 
-    /// 将轮次格式化为可读的文本
+    /// 将轮次格式化为可读的文本（审查修复：走 L10n 双语键）
     private func formattedRounds(_ rounds: Int) -> Text {
-        return L10n.shared.isEnglish
-            ? Text("After \(rounds) rounds")
-            : Text("每 \(rounds) 轮后")
+        Text(L10n.shared.每X轮后(rounds))
     }
 }
 

@@ -24,6 +24,15 @@ struct SoundSettingsSection: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .padding(.leading, 32)
+
+            Toggle(isOn: $viewModel.speechEnabled) {
+                Label(L10n.shared.语音播报, systemImage: "waveform")
+            }
+
+            Text(L10n.shared.语音播报说明)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.leading, 32)
         } header: {
             Text(L10n.shared.声音与震动)
         }

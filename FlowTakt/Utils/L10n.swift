@@ -7,7 +7,21 @@ import Combine
 final class L10n: ObservableObject {
     static let shared = L10n()
 
-    @Published var appLanguage: String = UserDefaults.standard.string(forKey: "appLanguage") ?? "zh-Hans"
+    @Published var appLanguage: String = {
+        if let stored = UserDefaults.standard.string(forKey: "appLanguage"), !stored.isEmpty {
+            return stored
+        }
+        // 首次启动：跟随系统语言（英文系统默认英文，其余默认中文），避免英文系统首启即中文
+        let preferred = Locale.preferredLanguages.first ?? "zh-Hans"
+        return preferred.hasPrefix("en") ? "en" : "zh-Hans"
+    }() {
+        didSet {
+            // 注意：@Published 的 willSet 已自动发送 objectWillChange，此处不再重复发送
+            UserDefaults.standard.set(appLanguage, forKey: "appLanguage")
+            // 同步到 App Group，保证 Widget 端语言与主 App 一致
+            WidgetDataStore.writeLanguage(appLanguage)
+        }
+    }
 
     var isEnglish: Bool {
         appLanguage.hasPrefix("en")
@@ -36,6 +50,15 @@ final class L10n: ObservableObject {
         isEnglish ? "Total completed: \(count) pomodoros" : "累计完成 \(count) 个番茄钟"
     }
 
+    /// 今日中断洞察（含最近一次中断原因）
+    func todayInterrupted(_ count: Int, lastReason: String?) -> String {
+        if let lastReason, !lastReason.isEmpty {
+            return isEnglish ? "Interrupted \(count) time(s) today · \(lastReason)"
+                             : "今日中断 \(count) 次 · \(lastReason)"
+        }
+        return isEnglish ? "Interrupted \(count) time(s) today" : "今日中断 \(count) 次"
+    }
+
     func todayPoints(_ pts: Int) -> String {
         isEnglish ? "+\(pts) Points" : "+\(pts) 积分"
     }
@@ -48,16 +71,56 @@ final class L10n: ObservableObject {
         isEnglish ? "Today \(count)/\(target)" : "今日 \(count)/\(target)"
     }
 
+    /// 周图柱状无障碍文案：某日完成 X 个番茄钟
+    func dayPomodoros(_ day: String, count: Int) -> String {
+        isEnglish ? "\(day): \(count) pomodoros" : "\(day)：\(count) 个番茄钟"
+    }
+
+    /// 日历单元格无障碍文案：某日 N 个日程
+    func dayEventCount(_ count: Int) -> String {
+        isEnglish ? "\(count) events" : "\(count)个日程"
+    }
+
+    // MARK: - 日程视图切换（A4）
+    var 月视图: String { isEnglish ? "Month" : "月视图" }
+    var 周视图: String { isEnglish ? "Week" : "周视图" }
+    var 上一周: String { isEnglish ? "Previous Week" : "上一周" }
+    var 下一周: String { isEnglish ? "Next Week" : "下一周" }
+
+    // MARK: - 自然语言快速建日程（B2）
+    var 快速添加日程: String { isEnglish ? "Quick Add" : "快速添加" }
+    var 快速添加提示: String { isEnglish ? "e.g. 明天下午3点 开会 / 8月15日 体检" : "如：明天下午3点 开会 / 8月15日 体检" }
+
+    // MARK: - 年热力图（A5）
+    var 专注年热力图: String { isEnglish ? "Yearly Heatmap" : "专注年热力图" }
+    func 年打卡天数(_ days: Int) -> String {
+        isEnglish ? "\(days) active day(s) this year" : "今年打卡 \(days) 天"
+    }
+    var 少: String { isEnglish ? "Less" : "少" }
+    var 多: String { isEnglish ? "More" : "多" }
+
+    // MARK: - 周报分享卡片（B3）
+    var 专注周报: String { isEnglish ? "Focus Report" : "专注周报" }
+    var 分享周报: String { isEnglish ? "Share Report" : "分享周报" }
+    var 本周完成番茄: String { isEnglish ? "Pomodoros This Week" : "本周完成番茄" }
+    var 专注时长周报: String { isEnglish ? "Focus Time" : "专注时长" }
+    var 连续天数: String { isEnglish ? "Day Streak" : "连续天数" }
+    var 累计完成: String { isEnglish ? "Total" : "累计完成" }
+    var 专注周报口号: String { isEnglish ? "Every pomodoro counts. Keep it up!" : "每一颗番茄都算数，继续坚持！" }
+
+    // MARK: - 数据备份/恢复（B4）
+    var 数据备份: String { isEnglish ? "Data Backup" : "数据备份" }
+    var 备份数据: String { isEnglish ? "Back Up Data" : "备份数据" }
+    var 恢复数据: String { isEnglish ? "Restore from Backup" : "恢复数据" }
+    var 恢复成功提示: String { isEnglish ? "Data restored successfully." : "数据恢复成功。" }
+    var 恢复失败提示: String { isEnglish ? "Restore failed. The file may be corrupted or incompatible." : "恢复失败，文件可能已损坏或不兼容。" }
+    var 恢复确认提示: String { isEnglish ? "Restoring will REPLACE all current data. Continue?" : "恢复将覆盖当前全部数据，确定继续吗？" }
+
+    // MARK: - 在线政策（C1）
+    var 在线查看隐私政策: String { isEnglish ? "View Online" : "在线查看隐私政策" }
+
     func targetCount(_ count: Int) -> String {
         isEnglish ? "\(count) times" : "\(count) 次"
-    }
-
-    func minutes(_ mins: Int) -> String {
-        isEnglish ? "\(mins) min" : "\(mins) 分钟"
-    }
-
-    func everyNRounds(_ n: Int) -> String {
-        isEnglish ? "Every \(n) rounds" : "每 \(n) 轮后"
     }
 
     func deleteConfirm(_ title: String) -> String {
@@ -122,7 +185,6 @@ final class L10n: ObservableObject {
     var noCompletedTasks: String { isEnglish ? "No completed tasks yet" : "还没有已完成的任务" }
     var completedWillShowHere: String { isEnglish ? "Completed tasks will show here, keep going!" : "完成的任务会显示在这里，继续加油！" }
     var noHabits: String { isEnglish ? "No habits yet" : "还没有习惯" }
-    var createFirstHabit: String { isEnglish ? "Build a small habit and stick with it. Time will reward you." : "建立一个小习惯，坚持下去，时间会给你最好的答案" }
 
     // MARK: - 使用说明
 
@@ -285,6 +347,21 @@ final class L10n: ObservableObject {
     var 无关联任务: String { isEnglish ? "No Linked Task" : "无关联任务" }
     var 无可用任务: String { isEnglish ? "No Available Tasks" : "无可用任务" }
 
+    // MARK: - 任务排序
+    var 排序: String { isEnglish ? "Sort" : "排序" }
+    var 按截止日期: String { isEnglish ? "Due Date" : "按截止日期" }
+    var 按优先级: String { isEnglish ? "Priority" : "按优先级" }
+    var 按创建时间: String { isEnglish ? "Created" : "按创建时间" }
+
+    // MARK: - 中断原因（放弃番茄钟）
+    var 中断原因: String { isEnglish ? "Interruption Reason" : "中断原因" }
+    var 为什么中断了这个番茄: String { isEnglish ? "Why was this pomodoro interrupted?" : "为什么中断了这个番茄？" }
+    var 原因电话: String { isEnglish ? "Phone call" : "电话" }
+    var 原因临时有事: String { isEnglish ? "Something came up" : "临时有事" }
+    var 原因身体不适: String { isEnglish ? "Not feeling well" : "身体不适" }
+    var 原因想休息: String { isEnglish ? "Need a break" : "想休息一下" }
+    var 原因其他: String { isEnglish ? "Other…" : "其他…" }
+
     // MARK: - 任务
     var 任务: String { isEnglish ? "Task" : "任务" }
     var 任务标题: String { isEnglish ? "Task Title" : "任务标题" }
@@ -302,6 +379,10 @@ final class L10n: ObservableObject {
     var 设置截止日期: String { isEnglish ? "Set Due Date" : "设置截止日期" }
     var 未设定日期: String { isEnglish ? "No Date Set" : "未设定日期" }
     var 关联任务: String { isEnglish ? "Linked Task" : "关联任务" }
+    var 创建时间: String { isEnglish ? "Created" : "创建时间" }
+    var 更新时间: String { isEnglish ? "Updated" : "更新时间" }
+    var 完成时间: String { isEnglish ? "Completed" : "完成时间" }
+    var 确认删除: String { isEnglish ? "Confirm Delete" : "确认删除" }
 
     // MARK: - 番茄钟 / 计时
     var 番茄钟: String { isEnglish ? "Pomodoro" : "番茄钟" }
@@ -310,9 +391,31 @@ final class L10n: ObservableObject {
     var 正在计时: String { isEnglish ? "Timing..." : "正在计时" }
     var 准备就绪: String { isEnglish ? "Ready" : "准备就绪" }
     var 已暂停: String { isEnglish ? "Paused" : "已暂停" }
+    var 白噪音: String { isEnglish ? "White Noise" : "白噪音" }
     var 白噪音开: String { isEnglish ? "White Noise On" : "白噪音 开" }
     var 白噪音关: String { isEnglish ? "White Noise Off" : "白噪音 关" }
+    var 白噪音类型: String { isEnglish ? "Noise Type" : "白噪音类型" }
+    var 白噪音类型白: String { isEnglish ? "White Noise" : "白噪音" }
+    var 白噪音类型雨: String { isEnglish ? "Rain" : "雨声" }
+    var 白噪音类型溪流: String { isEnglish ? "Stream" : "溪流" }
+    var 白噪音类型咖啡厅: String { isEnglish ? "Cafe" : "咖啡厅" }
+
+    // MARK: - 沉浸 Hero 单页（v1.3 UI 升级：phase 标题 / 副标题 / 时长 chip）
+    var 深度聚焦: String { isEnglish ? "Deep Focus" : "深度聚焦" }
+    var 深度聚焦副标题: String { isEnglish ? "Just this one thing, right now" : "这一段，只做当下那一件事" }
+    var 快速恢复: String { isEnglish ? "Quick Recharge" : "快速恢复" }
+    var 快速恢复副标题: String { isEnglish ? "Stand up, grab a sip, look afar" : "起身倒杯水，眼睛看看远处" }
+    var 彻底放空: String { isEnglish ? "Full Reset" : "彻底放空" }
+    var 彻底放空副标题: String { isEnglish ? "Put the screen down, take a walk" : "放下屏幕，去走走或打个盹" }
+    // 审查修复（2026-08-12 v1.3.4l）：时长预设 15/25/45 三个键删除（专注 Tab 已取消入口，仅保留「自定义」）
+    var 时长预设自定义: String { isEnglish ? "Custom…" : "自定义…" }
+    // 无障碍修复（2026-08-12）：时长 Menu 提示
+    var 选择后立即开始专注: String { isEnglish ? "Starts immediately after selection" : "选择后立即开始" }
+    var 长按时长手势提示: String { isEnglish ? "Long press to give up" : "长按放弃本次" }
+    // 审查修复（2026-08-12 v1.3.4m）：删除 FocusPresetSheet 整页选择后，下面两键无引用
     var 恢复: String { isEnglish ? "Resume" : "恢复" }
+    var 暂停: String { isEnglish ? "Pause" : "暂停" }
+    var 停止: String { isEnglish ? "Stop" : "停止" }
     var 记录: String { isEnglish ? "Records" : "记录" }
     var 暂无记录: String { isEnglish ? "No Records" : "暂无记录" }
     var 未记录时间: String { isEnglish ? "No Time Recorded" : "未记录时间" }
@@ -358,6 +461,12 @@ final class L10n: ObservableObject {
     var 结束: String { isEnglish ? "End" : "结束" }
     var 结束时间: String { isEnglish ? "End Time" : "结束时间" }
     var 全天: String { isEnglish ? "All Day" : "全天" }
+    var 准时: String { isEnglish ? "On Time" : "准时" }
+    func 提前分钟(_ minutes: Int) -> String { isEnglish ? "\(minutes) min before" : "提前 \(minutes) 分钟" }
+    var 提前一小时: String { isEnglish ? "1 hour before" : "提前 1 小时" }
+    var 提前一天: String { isEnglish ? "1 day before" : "提前 1 天" }
+    var 提前两天: String { isEnglish ? "2 days before" : "提前 2 天" }
+    var 提前一周: String { isEnglish ? "1 week before" : "提前 1 周" }
     var 地点: String { isEnglish ? "Location" : "地点" }
     var 备注: String { isEnglish ? "Notes" : "备注" }
     var 备注可选: String { isEnglish ? "Notes (Optional)" : "备注（可选）" }
@@ -365,7 +474,6 @@ final class L10n: ObservableObject {
     var 新建事件: String { isEnglish ? "New Event" : "新建事件" }
     var 编辑事件: String { isEnglish ? "Edit Event" : "编辑事件" }
     var 当日无日程: String { isEnglish ? "No events today" : "当日无日程" }
-    var 有日程: String { isEnglish ? "Has events" : "有日程" }
     var 上一月: String { isEnglish ? "Previous Month" : "上一月" }
     var 下一月: String { isEnglish ? "Next Month" : "下一月" }
     var 日程: String { isEnglish ? "Schedule" : "日程" }
@@ -393,9 +501,20 @@ final class L10n: ObservableObject {
     var 设置: String { isEnglish ? "Settings" : "设置" }
     var 关于: String { isEnglish ? "About" : "关于" }
     var 使用说明: String { isEnglish ? "Usage Guide" : "使用说明" }
+    // v1.3.4p：设置页评分入口
+    var 在AppStore评分: String { isEnglish ? "Rate on App Store" : "在App Store评分" }
+    // 无障碍（2026-08-17）：评分按钮 hint
+    var 打开AppStore评分: String { isEnglish ? "Opens the App Store to rate this app" : "打开 App Store 为应用评分" }
     var 应用名称: String { isEnglish ? "App Name" : "应用名称" }
     var 版本: String { isEnglish ? "Version" : "版本" }
     var 语言: String { isEnglish ? "Language" : "语言" }
+
+    // MARK: - 外观
+    var 外观: String { isEnglish ? "Appearance" : "外观" }
+    var 颜色主题: String { isEnglish ? "Color Theme" : "颜色主题" }
+    var 跟随系统: String { isEnglish ? "Follow System" : "跟随系统" }
+    var 浅色模式: String { isEnglish ? "Light" : "浅色模式" }
+    var 深色模式: String { isEnglish ? "Dark" : "深色模式" }
 
     // MARK: - 同步与数据
     var 同步与数据: String { isEnglish ? "Sync & Data" : "同步与数据" }
@@ -407,12 +526,15 @@ final class L10n: ObservableObject {
     var 每日提醒: String { isEnglish ? "Daily Reminder" : "每日提醒" }
     var 每日提醒标题: String { isEnglish ? "Don't forget to focus today!" : "今天别忘了专注哦！" }
     var 每日提醒内容: String { isEnglish ? "Start your first pomodoro and have a productive day 🍅" : "开启今天的第一个番茄钟，开始高效的一天 🍅" }
+    var 习惯打卡提醒: String { isEnglish ? "Habit Reminder" : "习惯打卡提醒" }
+    var 习惯打卡提醒标题: String { isEnglish ? "Time to check in your habits!" : "该打卡啦！" }
+    var 习惯打卡提醒内容: String { isEnglish ? "Keep the streak alive — check in your habits today 💪" : "今天也别忘了坚持习惯，保持连续打卡 💪" }
     var 提醒时间: String { isEnglish ? "Reminder Time" : "提醒时间" }
     var 重置数据库: String { isEnglish ? "Reset Database" : "重置数据库" }
-    var 重置数据库提示: String { isEnglish ? "Reset Database" : "重置数据库提示" }
-    var 重置数据库确认提示: String { isEnglish ? "Confirm reset database" : "重置数据库确认提示" }
-    var 重置数据库成功提示: String { isEnglish ? "Database reset successfully" : "数据库重置成功提示" }
-    var 重置数据库失败提示: String { isEnglish ? "Database reset failed" : "数据库重置失败提示" }
+    // 审查修复（2026-08-12）：补真实翻译；同时提示 iCloud 同步开启时云端旧数据会回灌（P1 #7）
+    var 重置数据库确认提示: String { isEnglish ? "All local data will be permanently erased. Continue?" : "本地全部数据将被永久清除，确定继续吗？" }
+    var 重置数据库成功提示: String { isEnglish ? "Database reset successfully" : "数据库重置成功" }
+    var 重置数据库失败提示: String { isEnglish ? "Database reset failed" : "数据库重置失败" }
     var 确认重置: String { isEnglish ? "Confirm Reset" : "确认重置" }
     var 重置成功: String { isEnglish ? "Reset Successful" : "重置成功" }
     var 重置失败: String { isEnglish ? "Reset Failed" : "重置失败" }
@@ -423,11 +545,21 @@ final class L10n: ObservableObject {
     var 震动反馈: String { isEnglish ? "Haptic Feedback" : "震动反馈" }
     var 专注与休息切换时的提示音: String { isEnglish ? "Sound when switching focus/break" : "专注与休息切换时的提示音" }
     var 计时结束时的震动提醒: String { isEnglish ? "Vibration when timer ends" : "计时结束时的震动提醒" }
+    var 语音播报: String { isEnglish ? "Voice Announcement" : "语音播报" }
+    var 语音播报说明: String { isEnglish ? "Announce \"Pomodoro N completed\" when a focus session ends" : "专注结束时语音播报「第 N 个番茄完成」" }
 
     // MARK: - 通知
     var 专注结束: String { isEnglish ? "Focus Session Ended" : "专注结束" }
     func 番茄钟已完成(_ title: String) -> String {
         isEnglish ? "Pomodoro \"\(title)\" completed!" : "「\(title)」的番茄钟已完成！"
+    }
+    /// 任务番茄进度（如 1/4）
+    func 番茄进度(_ completed: Int, _ estimated: Int) -> String {
+        isEnglish ? "\(completed)/\(estimated) pomodoros" : "\(completed)/\(estimated) 番茄"
+    }
+
+    func 第X个番茄完成(_ index: Int) -> String {
+        isEnglish ? "Pomodoro \(index) completed" : "第 \(index) 个番茄完成"
     }
 
     // MARK: - 错误提示
@@ -438,6 +570,43 @@ final class L10n: ObservableObject {
         isEnglish ? "iCloud sync failed: \(error)" : "iCloud 同步失败：\(error)"
     }
     var 通知权限被拒绝: String { isEnglish ? "Notification permission denied. Please enable it in Settings." : "通知权限被拒绝，请在设置中开启" }
+
+    // MARK: - 提醒（生日 / 纪念日 / 客户拜访）
+
+    var 类型: String { isEnglish ? "Type" : "类型" }
+    var 提醒: String { isEnglish ? "Reminder" : "提醒" }
+    var 提前提醒: String { isEnglish ? "Remind" : "提前提醒" }
+    var 提醒设置标题: String { isEnglish ? "Reminder Settings" : "提醒设置" }
+    var 提醒设置说明: String {
+        isEnglish
+        ? "Enable reminders for birthdays, anniversaries and client visits. Yearly items repeat automatically; one-time visits notify once."
+        : "为生日、纪念日与客户拜访开启提醒。生日/纪念日每年自动重复，客户拜访为一次性提醒。"
+    }
+    var 已开启提醒: String { isEnglish ? "Reminder enabled" : "已开启提醒" }
+
+    // MARK: - 提醒与通知设置
+
+    var 提醒与通知: String { isEnglish ? "Reminders & Notifications" : "提醒与通知" }
+    var 通知权限: String { isEnglish ? "Notification Permission" : "通知权限" }
+    var 通知已授权: String { isEnglish ? "Authorized" : "已授权" }
+    var 通知未授权: String { isEnglish ? "Not Authorized" : "未授权" }
+    var 通知尚未请求: String { isEnglish ? "Not Determined" : "尚未请求" }
+    var 去设置: String { isEnglish ? "Open Settings" : "去设置" }
+    var 后台App刷新: String { isEnglish ? "Background App Refresh" : "后台 App 刷新" }
+    var 后台刷新可用: String { isEnglish ? "Available" : "可用" }
+    var 后台刷新不可用: String { isEnglish ? "Unavailable" : "不可用" }
+    var 后台刷新受限: String { isEnglish ? "Restricted" : "受限" }
+    var 后台刷新说明: String {
+        isEnglish
+        ? "The widget refreshes automatically via WidgetKit. Background App Refresh is a system setting (Settings → General → Background App Refresh) and cannot be requested in-app."
+        : "小组件通过 WidgetKit 自动刷新。后台 App 刷新是系统级设置（设置 → 通用 → 后台 App 刷新），无法在 App 内请求授权。"
+    }
+    var 添加小组件说明: String {
+        isEnglish
+        ? "Long-press the home screen → Edit → tap + to add the FlowTakt Reminder widget."
+        : "长按主屏幕 → 编辑 → 点 + 添加 FlowTakt 提醒小组件，即可在桌面查看临近的生日、纪念日与客户拜访。"
+    }
+    var 刷新小组件: String { isEnglish ? "Refresh Widget Now" : "立即刷新小组件" }
     var 计时器状态异常: String { isEnglish ? "Timer state invalid" : "计时器状态异常" }
     var 未找到专注会话: String { isEnglish ? "Focus session not found" : "未找到专注会话" }
     var 未找到任务: String { isEnglish ? "Task not found" : "未找到任务" }
@@ -453,6 +622,14 @@ final class L10n: ObservableObject {
     func 分钟(_ minutes: Int) -> String {
         isEnglish ? "\(minutes)m" : "\(minutes)分钟"
     }
+    /// 审查修复（2026-08-12）：设置页长休息轮次文案（原硬编码在 TimerSettingsSection）
+    func 每X轮后(_ rounds: Int) -> String {
+        isEnglish ? "After \(rounds) rounds" : "每 \(rounds) 轮后"
+    }
+    /// 计时器 VoiceOver 友好时间（如 "剩余 24 分 59 秒"）
+    func 计时剩余(_ minutes: Int, _ seconds: Int) -> String {
+        isEnglish ? "\(minutes) minutes \(seconds) seconds remaining" : "剩余 \(minutes) 分 \(seconds) 秒"
+    }
     func 分秒(_ minutes: Int, _ seconds: Int) -> String {
         isEnglish ? "\(minutes)m \(seconds)s" : "\(minutes)分\(seconds)秒"
     }
@@ -464,7 +641,7 @@ final class L10n: ObservableObject {
 
     // MARK: - 隐私政策
     var 隐私政策: String { isEnglish ? "Privacy Policy" : "隐私政策" }
-    var 最后更新日期: String { isEnglish ? "Last updated: June 10, 2026" : "最后更新日期：2026年6月10日" }
+    var 最后更新日期: String { isEnglish ? "Last updated: August 7, 2026" : "最后更新日期：2026年8月7日" }
 
     var 隐私引言: String {
         isEnglish
@@ -578,8 +755,51 @@ final class L10n: ObservableObject {
     var 联系我们内容: String {
         isEnglish
         ? ("If you have any questions about this privacy policy or our data practices, "
-           + "please contact us at: dlyzh_0303@qq.com")
+           + "please contact us at: 33888833@qq.com (QQ: 33888833)")
         : ("如果你对本隐私政策或数据处理有任何疑问，"
-           + "请通过以下方式联系我们：dlyzh_0303@qq.com")
+           + "请通过以下方式联系我们：33888833@qq.com  QQ：33888833")
     }
+
+    // MARK: - v1.3 新增文案
+
+    // 周报推送
+    var 本周专注周报: String { isEnglish ? "Weekly Focus Report" : "本周专注周报" }
+    var 本周专注周报内容: String { isEnglish ? "Your weekly focus summary is ready." : "你的本周专注周报已生成。" }
+    func 周报汇总(pomodoros: Int, minutes: Int, streak: Int) -> String {
+        isEnglish
+        ? "\(pomodoros) pomodoros · \(minutes) min focused · \(streak)-day streak"
+        : "本周完成 \(pomodoros) 个番茄钟 · 专注 \(minutes) 分钟 · 连续 \(streak) 天"
+    }
+    var 每周日周报: String { isEnglish ? "Weekly Report" : "每周日周报" }
+    var 每周日周报说明: String {
+        isEnglish
+        ? "Get a Sunday evening summary of your week's focus time, completed pomodoros and streak."
+        : "每周日晚推送本周专注时长、完成番茄数与连续天数。"
+    }
+
+    // 任务归档检索
+    var 归档: String { isEnglish ? "Archived" : "归档" }
+    var 暂无归档任务: String { isEnglish ? "No archived tasks" : "暂无归档任务" }
+    var 归档任务为空说明: String {
+        isEnglish
+        ? "Completed tasks you archive are kept here and can be restored anytime."
+        : "已完成的任务归档后会被保留在此，可随时恢复。"
+    }
+    var 搜索归档任务: String { isEnglish ? "Search archived tasks" : "搜索归档任务" }
+
+    // 习惯打卡热力图
+    var 打卡热力图: String { isEnglish ? "Check-in Heatmap" : "打卡热力图" }
+    var 热力图: String { isEnglish ? "Heatmap" : "热力图" }
+    var 打卡次数: String { isEnglish ? "Check-ins" : "打卡次数" }
+    var 打卡天数: String { isEnglish ? "Active Days" : "打卡天数" }
+    // 无障碍修复（2026-08-12）：打卡按钮 VoiceOver 标签
+    var 打卡: String { isEnglish ? "Check in" : "打卡" }
+    var 热力图图例: String { isEnglish ? "Less" : "少" }
+
+    // 数据导出
+    var 数据导出: String { isEnglish ? "Export Data" : "数据导出" }
+    var 导出数据: String { isEnglish ? "Export CSV" : "导出数据" }
+    var 导出失败提示: String { isEnglish ? "Export failed" : "导出失败" }
+
+    // 今日专注（锁屏 Widget）
 }

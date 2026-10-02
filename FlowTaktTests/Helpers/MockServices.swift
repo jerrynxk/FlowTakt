@@ -3,128 +3,54 @@ import CoreData
 @testable import FlowTakt
 
 // MARK: - Mock Service 实现
-// 这些 Mock 用于 ViewModel 测试，避免真实 CoreData 和系统 API 依赖
-// 所有 Mock 严格 conform 到对应的真实协议
-
-// MARK: - MockFocusService
-
-final class MockFocusService: FocusServiceProtocol {
-    private static let testController = PersistenceController(inMemory: true)
-    var sessions: [FocusSession] = []
-
-    // Handler closures
-    var startFocusSessionHandler: ((Task?, TimeInterval, FocusPhase, Int16) -> FocusSession)?
-    var completeSessionHandler: ((FocusSession) -> Void)?
-    var interruptSessionHandler: ((FocusSession) -> Void)?
-    var abandonSessionHandler: ((FocusSession) -> Void)?
-
-    // Configurable results
-    var getCurrentSessionResult: FocusSession?
-    var fetchTodaysSessionsResult: [FocusSession] = []
-
-    // MARK: - FocusServiceProtocol
-
-    func startFocusSession(task: Task?, plannedDuration: TimeInterval, phase: FocusPhase, roundIndex: Int16) -> FocusSession {
-        if let handler = startFocusSessionHandler {
-            return handler(task, plannedDuration, phase, roundIndex)
-        }
-        // 返回一个默认的 session 实例，而不是 fatalError，避免测试进程崩溃
-        let session = FocusSession(context: Self.testController.viewContext)
-        session.id = UUID()
-        session.startTime = Date()
-        session.plannedDuration = plannedDuration
-        session.phase = phase.rawValue
-        session.roundIndex = roundIndex
-        session.status = SessionStatus.running.rawValue
-        session.earnedPoints = 0
-        session.createdAt = Date()
-        session.updatedAt = Date()
-        session.task = task
-        sessions.append(session)
-        return session
-    }
-
-    func completeSession(_ session: FocusSession) {
-        completeSessionHandler?(session)
-    }
-
-    func interruptSession(_ session: FocusSession) {
-        interruptSessionHandler?(session)
-    }
-
-    func abandonSession(_ session: FocusSession) {
-        abandonSessionHandler?(session)
-    }
-
-    func getCurrentSession() -> FocusSession? {
-        return getCurrentSessionResult
-    }
-
-    func fetchTodaysSessions() -> [FocusSession] {
-        return fetchTodaysSessionsResult
-    }
-}
+// 这些 Mock 用于 ViewModel 测试，严格 conform 到实际的 Service 协议
+// 所有 Mock 类的方法签名与源码协议完全一致
 
 // MARK: - MockTaskService
 
 final class MockTaskService: TaskServiceProtocol {
-    private static let testController = PersistenceController(inMemory: true)
     var tasks: [Task] = []
 
-    // Handler closures（签名与真实协议完全一致，包含 recurrenceRule）
-    var createTaskHandler: ((String, String?, Int16, Int16, Date?, String?) -> Task)?
-    var updateTaskHandler: ((Task, String?, String?, Int16?, Int16?, String?, Date?, String?) -> Void)?
-    var deleteTaskHandler: ((Task) -> Void)?
+    // 用于测试断言的 handler 闭包
+    var createTaskCalledHandler: ((String, String?, Int16, Int16, Date?, String?) -> Void)?
+    var updateTaskCalledHandler: ((Task) -> Void)?
+    var deleteTaskCalledHandler: ((Task) -> Void)?
+    var incrementCompletedPomodorosCalledHandler: ((Task) -> Void)?
     var incrementCompletedPomodorosHandler: ((Task) -> Void)?
 
-    // Tracking
-    var createTaskCallCount = 0
-    var updateTaskCallCount = 0
-    var deleteTaskCallCount = 0
-    var incrementCompletedPomodorosCallCount = 0
-    /// 最近一次 createTask 传入的 recurrenceRule（便于测试断言）
-    var lastCreateTaskRecurrenceRule: String?
-    /// 最近一次 updateTask 传入的 recurrenceRule
-    var lastUpdateTaskRecurrenceRule: String?
+    // 向后兼容：旧版 TaskViewModelTests / FocusViewModelTests
+    var createTaskHandler: ((String, String?, Int16, Int16, Date?, String?) -> Task)?
+    var deleteTaskHandler: ((Task) -> Void)?
+    var updateTaskHandler: ((Task, String?, String?, Int16?, Int16?, String?, Date?, String?) -> Void)?
 
-    // MARK: - TaskServiceProtocol
-
+    /// 注意：必须实现与协议一致的完整签名（含 recurrenceRule 参数）。
+    /// 若缺少该参数，调用会落到协议扩展的默认实现上并无限递归（栈溢出崩溃）。
     func createTask(title: String, notes: String?, estimatedPomodoros: Int16, priority: Int16, dueDate: Date?, recurrenceRule: String?) -> Task {
-        createTaskCallCount += 1
-        lastCreateTaskRecurrenceRule = recurrenceRule
+        createTaskCalledHandler?(title, notes, estimatedPomodoros, priority, dueDate, recurrenceRule)
         if let handler = createTaskHandler {
             return handler(title, notes, estimatedPomodoros, priority, dueDate, recurrenceRule)
         }
-        // 返回一个默认的 task 实例，而不是 fatalError
-        let task = Task(context: Self.testController.viewContext)
-        task.id = UUID()
-        task.title = title
-        task.notes = notes
-        task.estimatedPomodoros = estimatedPomodoros
-        task.completedPomodoros = 0
-        task.priority = priority
-        task.status = TaskStatus.active.rawValue
-        task.dueDate = dueDate
-        if let rule = recurrenceRule, rule != "none" {
-            task.isRecurring = true
-            task.recurrenceRule = rule
-        }
-        task.displayOrder = Int16(tasks.count)
-        task.createdAt = Date()
-        task.updatedAt = Date()
-        tasks.append(task)
-        return task
+        return tasks.first!
     }
 
+    /// 必须实现与协议一致的完整签名（含 recurrenceRule 参数），避免走扩展默认实现递归。
     func updateTask(_ task: Task, title: String?, notes: String?, estimatedPomodoros: Int16?, priority: Int16?, status: String?, dueDate: Date?, recurrenceRule: String?) {
-        updateTaskCallCount += 1
-        lastUpdateTaskRecurrenceRule = recurrenceRule
-        updateTaskHandler?(task, title, notes, estimatedPomodoros, priority, status, dueDate, recurrenceRule)
+        updateTaskCalledHandler?(task)
+        if let handler = updateTaskHandler {
+            handler(task, title, notes, estimatedPomodoros, priority, status, dueDate, recurrenceRule)
+        }
+        if let t = title { task.title = t }
+        if let n = notes { task.notes = n }
+        if let e = estimatedPomodoros { task.estimatedPomodoros = e }
+        if let p = priority { task.priority = p }
+        if let s = status { task.status = s }
+        if let d = dueDate { task.dueDate = d }
     }
 
     func deleteTask(_ task: Task) {
-        deleteTaskCallCount += 1
+        deleteTaskCalledHandler?(task)
         deleteTaskHandler?(task)
+        tasks.removeAll { $0.id == task.id }
     }
 
     func fetchAllTasks() -> [Task] {
@@ -139,9 +65,83 @@ final class MockTaskService: TaskServiceProtocol {
         return tasks.filter { $0.status == TaskStatus.completed.rawValue }
     }
 
+    func fetchArchivedTasks() -> [Task] {
+        return tasks.filter { $0.status == TaskStatus.archived.rawValue }
+    }
+
     func incrementCompletedPomodoros(for task: Task) {
-        incrementCompletedPomodorosCallCount += 1
+        incrementCompletedPomodorosCalledHandler?(task)
         incrementCompletedPomodorosHandler?(task)
+        task.completedPomodoros += 1
+    }
+}
+
+// MARK: - MockFocusService
+
+final class MockFocusService: FocusServiceProtocol {
+    var sessions: [FocusSession] = []
+
+    // handler 闭包用于测试断言
+    var startFocusSessionHandler: ((Task?, TimeInterval, FocusPhase, Int16) -> FocusSession)?
+    var completeSessionHandler: ((FocusSession, TimeInterval?) -> Void)?
+    var interruptSessionHandler: ((FocusSession) -> Void)?
+    var abandonSessionHandler: ((FocusSession) -> Void)?
+    var currentSessionToReturn: FocusSession?
+    var fetchTodaysSessionsResult: [FocusSession]?
+
+    func startFocusSession(task: Task?, plannedDuration: TimeInterval, phase: FocusPhase, roundIndex: Int16) -> FocusSession {
+        if let handler = startFocusSessionHandler {
+            return handler(task, plannedDuration, phase, roundIndex)
+        }
+        return sessions.first!
+    }
+
+    func completeSession(_ session: FocusSession, actualDuration: TimeInterval? = nil) {
+        completeSessionHandler?(session, actualDuration)
+        session.status = SessionStatus.completed.rawValue
+        session.endTime = Date()
+        session.actualDuration = actualDuration ?? session.plannedDuration
+    }
+
+    func interruptSession(_ session: FocusSession) {
+        interruptSessionHandler?(session)
+        session.status = SessionStatus.interrupted.rawValue
+        session.endTime = Date()
+    }
+
+    func abandonSession(_ session: FocusSession, reason: String?) {
+        abandonSessionHandler?(session)
+        session.status = SessionStatus.abandoned.rawValue
+        session.interruptionReason = reason
+    }
+
+    func getCurrentSession() -> FocusSession? {
+        return currentSessionToReturn
+    }
+
+    func fetchTodaysSessions() -> [FocusSession] {
+        if let result = fetchTodaysSessionsResult { return result }
+        return sessions.filter { Calendar.current.isDateInToday($0.startTime) }
+    }
+
+    func fetchCompletedSessions(from startDate: Date, to endDate: Date) -> [FocusSession] {
+        // 审查修复（2026-08-12 第二轮）：与 FocusService 同步，只返回专注阶段完成会话
+        sessions.filter {
+            $0.status == SessionStatus.completed.rawValue &&
+            $0.phase == FocusPhase.focus.rawValue &&
+            $0.startTime >= startDate && $0.startTime <= endDate
+        }
+    }
+
+    func fetchAllCompletedSessions() -> [FocusSession] {
+        sessions.filter {
+            $0.status == SessionStatus.completed.rawValue &&
+            $0.phase == FocusPhase.focus.rawValue
+        }
+    }
+
+    func setAchievementService(_ service: AchievementServiceProtocol) {
+        // Mock: 无需实际操作
     }
 }
 
@@ -149,21 +149,30 @@ final class MockTaskService: TaskServiceProtocol {
 
 final class MockAchievementService: AchievementServiceProtocol {
     var achievements: [Achievement] = []
-    var totalPoints: Int = 0
-    var todaysPoints: Int = 0
-    var unlockedAchievementCount: Int = 0
+    var totalPointsValue: Int = 0
+    var todayPointsValue: Int = 0
+    var unlockedCountValue: Int = 0
+    var checkAndUnlockCalled = false
 
-    // Tracking
-    var checkAndUnlockAchievementsCalled = false
-    var checkAndUnlockAchievementsCallCount = 0
+    // 向后兼容：旧版测试使用以下属性名
+    var totalPoints: Int {
+        get { totalPointsValue }
+        set { totalPointsValue = newValue }
+    }
+    var todaysPoints: Int {
+        get { todayPointsValue }
+        set { todayPointsValue = newValue }
+    }
+    var unlockedAchievementCount: Int {
+        get { unlockedCountValue }
+        set { unlockedCountValue = newValue }
+    }
     var checkAndUnlockAchievementsHandler: (() -> Void)?
     var newlyUnlockedAchievements: [Achievement] = []
-
-    // MARK: - AchievementServiceProtocol
+    var checkAndUnlockAchievementsCalled: Bool { checkAndUnlockCalled }
 
     func checkAndUnlockAchievements() {
-        checkAndUnlockAchievementsCalled = true
-        checkAndUnlockAchievementsCallCount += 1
+        checkAndUnlockCalled = true
         checkAndUnlockAchievementsHandler?()
     }
 
@@ -172,15 +181,15 @@ final class MockAchievementService: AchievementServiceProtocol {
     }
 
     func getTotalPoints() -> Int {
-        return totalPoints
+        return totalPointsValue
     }
 
     func getTodaysPoints() -> Int {
-        return todaysPoints
+        return todayPointsValue
     }
 
     func getUnlockedAchievementCount() -> Int {
-        return unlockedAchievementCount
+        return unlockedCountValue
     }
 }
 
@@ -188,45 +197,37 @@ final class MockAchievementService: AchievementServiceProtocol {
 
 final class MockNotificationService: NotificationServiceProtocol {
     var requestAuthorizationResult: Bool = true
+    var authorizationRequested = false
+    var scheduledNotifications: [(sessionId: UUID, title: String, timeInterval: TimeInterval)] = []
+    var cancelledIdentifiers: [String] = []
 
-    // Tracking
-    var scheduleSessionEndNotificationCalled = false
-    var lastScheduledSessionId: UUID?
-    var lastScheduledTitle: String?
-    var lastScheduledTimeInterval: TimeInterval = 0
-
-    var cancelNotificationCalled = false
-    var lastCancelledIdentifier: String?
-
-    // MARK: - NotificationServiceProtocol
+    // 向后兼容：旧版 FocusServiceTests 使用以下属性
+    var scheduleSessionEndNotificationCalled: Bool { !scheduledNotifications.isEmpty }
+    var lastScheduledSessionId: UUID? { scheduledNotifications.last?.sessionId }
+    var lastScheduledTimeInterval: TimeInterval { scheduledNotifications.last?.timeInterval ?? 0 }
+    var cancelNotificationCalled: Bool { !cancelledIdentifiers.isEmpty }
+    var lastCancelledIdentifier: String? { cancelledIdentifiers.last }
 
     func requestAuthorization() async -> Bool {
+        authorizationRequested = true
         return requestAuthorizationResult
     }
 
     func scheduleSessionEndNotification(sessionId: UUID, title: String, timeInterval: TimeInterval) {
-        scheduleSessionEndNotificationCalled = true
-        lastScheduledSessionId = sessionId
-        lastScheduledTitle = title
-        lastScheduledTimeInterval = timeInterval
+        scheduledNotifications.append((sessionId, title, timeInterval))
     }
 
     func cancelNotification(withIdentifier identifier: String) {
-        cancelNotificationCalled = true
-        lastCancelledIdentifier = identifier
+        cancelledIdentifiers.append(identifier)
     }
 }
 
 // MARK: - MockAppBlockerService
 
 final class MockAppBlockerService: AppBlockerServiceProtocol {
-    var isBlocking: Bool = false
-
-    // Tracking
+    private(set) var isBlocking: Bool = false
     var startBlockingCalled = false
     var stopBlockingCalled = false
-
-    // MARK: - AppBlockerServiceProtocol
 
     func startBlocking() {
         isBlocking = true
@@ -242,16 +243,12 @@ final class MockAppBlockerService: AppBlockerServiceProtocol {
 // MARK: - MockAudioService
 
 final class MockAudioService: AudioServiceProtocol {
-    var isWhiteNoisePlaying: Bool = false
-
-    // Tracking
+    private(set) var isWhiteNoisePlaying: Bool = false
     var playStartSoundCalled = false
     var playCompleteSoundCalled = false
     var playAlarmSoundCalled = false
     var toggleWhiteNoiseCalled = false
     var configureAudioSessionCalled = false
-
-    // MARK: - AudioServiceProtocol
 
     func playStartSound() {
         playStartSoundCalled = true
@@ -270,7 +267,246 @@ final class MockAudioService: AudioServiceProtocol {
         isWhiteNoisePlaying.toggle()
     }
 
+    var setWhiteNoiseTypeCalled = false
+    var whiteNoiseTypeSet: WhiteNoiseType?
+
+    func setWhiteNoiseType(_ type: WhiteNoiseType) {
+        setWhiteNoiseTypeCalled = true
+        whiteNoiseTypeSet = type
+    }
+
     func configureAudioSession() {
         configureAudioSessionCalled = true
+    }
+}
+
+// MARK: - MockSpeechService
+
+final class MockSpeechService: SpeechServiceProtocol {
+    var speakCalled = false
+    var lastSpokenText: String?
+    var isSpeechEnabledValue = true
+
+    func speak(_ text: String) {
+        speakCalled = true
+        lastSpokenText = text
+    }
+
+    var isSpeechEnabled: Bool { isSpeechEnabledValue }
+}
+
+// MARK: - MockScheduleService
+
+final class MockScheduleService: ScheduleServiceProtocol {
+    var events: [ScheduleItem] = []
+    var createdEvents: [ScheduleItem] = []
+    var updatedEvents: [ScheduleItem] = []
+    var deletedEvents: [ScheduleItem] = []
+
+    var createEventCalledHandler: (() -> Void)?
+    var updateEventCalledHandler: (() -> Void)?
+    var deleteEventCalledHandler: (() -> Void)?
+
+    func createEvent(title: String, startDate: Date, endDate: Date?, isAllDay: Bool, location: String?, notes: String?, colorHex: String?, category: ScheduleCategory, repeatRule: RepeatRule, reminderEnabled: Bool, reminderLeadMinutes: Int, task: Task?) -> ScheduleItem {
+        createEventCalledHandler?()
+        // 返回 events 中的最后一个
+        if let last = events.last {
+            createdEvents.append(last)
+            return last
+        }
+        return events.first!
+    }
+
+    func updateEvent(_ event: ScheduleItem, title: String?, startDate: Date?, endDate: Date?, isAllDay: Bool?, location: String?, notes: String?, colorHex: String?, category: ScheduleCategory?, repeatRule: RepeatRule?, reminderEnabled: Bool?, reminderLeadMinutes: Int?) {
+        updateEventCalledHandler?()
+        updatedEvents.append(event)
+        if let t = title { event.title = t }
+        if let s = startDate { event.startDate = s }
+        if let e = endDate { event.endDate = e }
+        if let a = isAllDay { event.isAllDay = a }
+        if let l = location { event.location = l }
+        if let n = notes { event.notes = n }
+        if let c = colorHex { event.colorHex = c }
+        if let cat = category { event.category = cat.rawValue }
+        if let r = repeatRule { event.repeatRule = r.rawValue }
+        if let re = reminderEnabled { event.reminderEnabled = re }
+        if let rl = reminderLeadMinutes { event.reminderLeadMinutes = Int32(rl) }
+    }
+
+    func deleteEvent(_ event: ScheduleItem) {
+        deleteEventCalledHandler?()
+        deletedEvents.append(event)
+        events.removeAll { $0.id == event.id }
+    }
+
+    func fetchEvents(from startDate: Date, to endDate: Date) -> [ScheduleItem] {
+        return events.filter { $0.startDate >= startDate && $0.startDate < endDate }
+    }
+
+    func fetchEventsForDate(_ date: Date) -> [ScheduleItem] {
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        return events.filter { $0.startDate >= startOfDay && $0.startDate < endOfDay }
+    }
+
+    func fetchAllEvents() -> [ScheduleItem] {
+        return events
+    }
+
+    func fetchEvent(id: UUID) -> ScheduleItem? {
+        return events.first { $0.id == id }
+    }
+}
+
+// MARK: - MockHabitService
+
+final class MockHabitService: HabitServiceProtocol {
+    var habits: [Habit] = []
+    var records: [HabitRecord] = []
+
+    var createHabitCalledHandler: (() -> Void)?
+    var deleteHabitCalledHandler: (() -> Void)?
+    var checkInCalledHandler: (() -> Void)?
+    var removeCheckInCalledHandler: (() -> Void)?
+    var recalculateStreakCalledHandler: ((Habit) -> Void)?
+    var defaultCheckInRecord: HabitRecord?
+
+    func createHabit(name: String, descriptionText: String?, iconName: String?, colorHex: String?, frequency: String, targetCount: Int16) -> Habit {
+        createHabitCalledHandler?()
+        return habits.first!
+    }
+
+    func updateHabit(_ habit: Habit, name: String?, descriptionText: String?, iconName: String?, colorHex: String?, frequency: String?, targetCount: Int16?) {
+        if let n = name { habit.name = n }
+        if let d = descriptionText { habit.descriptionText = d }
+        if let i = iconName { habit.iconName = i }
+        if let c = colorHex { habit.colorHex = c }
+        if let f = frequency { habit.frequency = f }
+        if let t = targetCount { habit.targetCount = t }
+    }
+
+    func deleteHabit(_ habit: Habit) {
+        deleteHabitCalledHandler?()
+        habits.removeAll { $0.id == habit.id }
+    }
+
+    /// 注意：不可用 fatalError —— 测试可能只验证"调用了 service 且不崩溃"，
+    /// 此时未预置 records / defaultCheckInRecord，fatalError 会导致测试进程崩溃（SIGTRAP）。
+    /// 无预置数据时返回习惯自身派生的一条占位记录。
+    func checkIn(habit: Habit, count: Int16, note: String?) -> HabitRecord {
+        checkInCalledHandler?()
+        if let record = records.first {
+            return record
+        }
+        if let defaultRecord = defaultCheckInRecord {
+            return defaultRecord
+        }
+        let placeholder = HabitRecord(context: habit.managedObjectContext ?? PersistenceController.shared.viewContext)
+        placeholder.id = UUID()
+        placeholder.habit = habit
+        placeholder.date = Date()
+        placeholder.count = count
+        placeholder.note = note
+        placeholder.createdAt = Date()
+        return placeholder
+    }
+
+    func removeCheckIn(_ record: HabitRecord) {
+        removeCheckInCalledHandler?()
+        records.removeAll { $0.id == record.id }
+    }
+
+    func fetchAllHabits() -> [Habit] {
+        return habits
+    }
+
+    func fetchHabitRecords(habit: Habit, from date: Date, to endDate: Date) -> [HabitRecord] {
+        // 崩溃修复（2026-10-02）：`HabitRecord.habit` 改为可选关系（CloudKit 不支持级联删除，
+        // 合并后可能残留 habit == nil 的孤儿记录），故需用可选链比较
+        return records.filter { $0.habit?.id == habit.id && $0.date >= date && $0.date <= endDate }
+    }
+
+    func fetchRecords(from startDate: Date, to endDate: Date) -> [HabitRecord] {
+        return records.filter { $0.date >= startDate && $0.date <= endDate }
+    }
+
+    func recalculateStreak(for habit: Habit) {
+        recalculateStreakCalledHandler?(habit)
+    }
+}
+
+// MARK: - MockTimeRecordService
+
+final class MockTimeRecordService: TimeRecordServiceProtocol {
+    var records: [TimeRecord] = []
+    var currentRecord: TimeRecord?
+
+    var startRecordingCalledHandler: (() -> Void)?
+    var stopRecordingCalledHandler: (() -> Void)?
+    var deleteRecordCalledHandler: (() -> Void)?
+
+    var totalDurationToReturn: Double = 0
+    var durationByProjectToReturn: [(project: String, duration: Double)] = []
+
+    func startRecording(task: Task?, note: String?, project: String?, tag: Tag?) -> TimeRecord {
+        startRecordingCalledHandler?()
+        currentRecord = records.first
+        return records.first!
+    }
+
+    func stopRecording(_ record: TimeRecord) {
+        stopRecordingCalledHandler?()
+        record.endTime = Date()
+        record.duration = record.endTime!.timeIntervalSince(record.startTime)
+        currentRecord = nil
+    }
+
+    func updateRecord(_ record: TimeRecord, note: String?, project: String?, isBillable: Bool?, tag: Tag?) {
+        if let n = note { record.note = n }
+        if let p = project { record.project = p }
+        if let b = isBillable { record.isBillable = b }
+        if let t = tag { record.tag = t }
+    }
+
+    func deleteRecord(_ record: TimeRecord) {
+        deleteRecordCalledHandler?()
+        records.removeAll { $0.id == record.id }
+    }
+
+    func fetchAllRecords() -> [TimeRecord] {
+        return records
+    }
+
+    func fetchRecords(from: Date, to: Date) -> [TimeRecord] {
+        return records.filter { $0.startTime >= from && $0.startTime < to }
+    }
+
+    func fetchRecordsForTask(_ task: Task) -> [TimeRecord] {
+        return records.filter { $0.task?.id == task.id }
+    }
+
+    func getTotalDuration(from: Date, to: Date) -> Double {
+        return totalDurationToReturn
+    }
+
+    func getDurationByProject(from: Date, to: Date) -> [(project: String, duration: Double)] {
+        return durationByProjectToReturn
+    }
+}
+
+// MARK: - MockSyncService
+
+final class MockSettingsSyncService: SyncServiceProtocol {
+    var isCloudAvailable: Bool = false
+    var setupCloudKitCalled = false
+    var forceSyncCalled = false
+
+    func setupCloudKit() {
+        setupCloudKitCalled = true
+    }
+
+    func forceSync() {
+        forceSyncCalled = true
     }
 }

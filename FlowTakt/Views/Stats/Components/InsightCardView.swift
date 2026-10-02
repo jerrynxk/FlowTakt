@@ -44,10 +44,23 @@ struct InsightCardView: View {
                     iconColor: .breakGreen,
                     text: L10n.shared.totalCompleted(statsViewModel.totalCompletedPomodoros)
                 )
+
+                // 今日中断洞察（仅当有放弃会话时显示，附带最近一次中断原因）
+                if statsViewModel.todayInterruptedCount > 0 {
+                    InsightRow(
+                        icon: "hand.raised.fill",
+                        iconColor: .orange,
+                        text: L10n.shared.todayInterrupted(
+                            statsViewModel.todayInterruptedCount,
+                            lastReason: statsViewModel.lastInterruptionReason
+                        )
+                    )
+                }
             }
             .padding(16)
         }
         .cardStyle()
+        .accessibilityElement(children: .combine)
     }
 }
 

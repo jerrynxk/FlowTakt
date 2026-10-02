@@ -18,6 +18,12 @@ extension ScheduleItem {
     @NSManaged public var createdAt: Date
     @NSManaged public var updatedAt: Date
 
+    // MARK: - 提醒相关字段
+    @NSManaged public var category: String
+    @NSManaged public var repeatRule: String?
+    @NSManaged public var reminderEnabled: Bool
+    @NSManaged public var reminderLeadMinutes: Int32
+
     @NSManaged public var task: Task?
 }
 

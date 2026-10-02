@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		CCAB000E0000000000000E /* FlowTaktWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = CCAB000100000000000001 /* FlowTaktWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		CC10EBF42FD7207F00FCF3F7 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,12 +25,34 @@
 			remoteGlobalIDString = CC10EBE52FD7207B00FCF3F7;
 			remoteInfo = FlowTakt;
 		};
+		CCAB000B0000000000000B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CC10EBDE2FD7207B00FCF3F7 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CCAB000400000000000004;
+			remoteInfo = FlowTaktWidget;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		CCAB000D0000000000000D /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				CCAB000E0000000000000E /* FlowTaktWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		CC10EBE62FD7207B00FCF3F7 /* FlowTakt.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FlowTakt.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CC10EBF32FD7207F00FCF3F7 /* FlowTaktTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FlowTaktTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CC10EBFD2FD7207F00FCF3F7 /* FlowTaktUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FlowTaktUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CCAB000100000000000001 /* FlowTaktWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FlowTaktWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -43,6 +69,16 @@
 		CC10EC002FD7207F00FCF3F7 /* FlowTaktUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = FlowTaktUITests;
+			sourceTree = "<group>";
+		};
+		CCAB000200000000000002 /* FlowTaktWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FlowTaktWidget;
+			sourceTree = "<group>";
+		};
+		CCAB000300000000000003 /* FlowTaktShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FlowTaktShared;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -69,6 +105,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CCAB000900000000000009 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -78,6 +121,8 @@
 				CC10EBE82FD7207B00FCF3F7 /* FlowTakt */,
 				CC10EBF62FD7207F00FCF3F7 /* FlowTaktTests */,
 				CC10EC002FD7207F00FCF3F7 /* FlowTaktUITests */,
+				CCAB000200000000000002 /* FlowTaktWidget */,
+				CCAB000300000000000003 /* FlowTaktShared */,
 				CC10EBE72FD7207B00FCF3F7 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,6 +133,7 @@
 				CC10EBE62FD7207B00FCF3F7 /* FlowTakt.app */,
 				CC10EBF32FD7207F00FCF3F7 /* FlowTaktTests.xctest */,
 				CC10EBFD2FD7207F00FCF3F7 /* FlowTaktUITests.xctest */,
+				CCAB000100000000000001 /* FlowTaktWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -102,13 +148,16 @@
 				CC10EBE22FD7207B00FCF3F7 /* Sources */,
 				CC10EBE32FD7207B00FCF3F7 /* Frameworks */,
 				CC10EBE42FD7207B00FCF3F7 /* Resources */,
+				CCAB000D0000000000000D /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				CCAB000C0000000000000C /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				CC10EBE82FD7207B00FCF3F7 /* FlowTakt */,
+				CCAB000300000000000003 /* FlowTaktShared */,
 			);
 			name = FlowTakt;
 			packageProductDependencies = (
@@ -163,6 +212,29 @@
 			productReference = CC10EBFD2FD7207F00FCF3F7 /* FlowTaktUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		CCAB000400000000000004 /* FlowTaktWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CCAB000500000000000005 /* Build configuration list for PBXNativeTarget "FlowTaktWidget" */;
+			buildPhases = (
+				CCAB000800000000000008 /* Sources */,
+				CCAB000900000000000009 /* Frameworks */,
+				CCAB000A0000000000000A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				CCAB000200000000000002 /* FlowTaktWidget */,
+				CCAB000300000000000003 /* FlowTaktShared */,
+			);
+			name = FlowTaktWidget;
+			packageProductDependencies = (
+			);
+			productName = FlowTaktWidget;
+			productReference = CCAB000100000000000001 /* FlowTaktWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -203,6 +275,7 @@
 				CC10EBE52FD7207B00FCF3F7 /* FlowTakt */,
 				CC10EBF22FD7207F00FCF3F7 /* FlowTaktTests */,
 				CC10EBFC2FD7207F00FCF3F7 /* FlowTaktUITests */,
+				CCAB000400000000000004 /* FlowTaktWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -223,6 +296,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		CC10EBFB2FD7207F00FCF3F7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CCAB000A0000000000000A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +333,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CCAB000800000000000008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -265,6 +352,11 @@
 			isa = PBXTargetDependency;
 			target = CC10EBE52FD7207B00FCF3F7 /* FlowTakt */;
 			targetProxy = CC10EBFE2FD7207F00FCF3F7 /* PBXContainerItemProxy */;
+		};
+		CCAB000C0000000000000C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CCAB000400000000000004 /* FlowTaktWidget */;
+			targetProxy = CCAB000B0000000000000B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -401,22 +493,16 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = FlowTakt/FlowTakt.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = CGVP85UZ44;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
 				ICLOUD_IDENTIFIER = iCloud.com.flowtakt;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UIBackgroundModes = "audio fetch remote-notification";
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_FILE = "FlowTakt-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.flowtakt.FlowTakt;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -438,22 +524,16 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = FlowTakt/FlowTakt.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = CGVP85UZ44;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
 				ICLOUD_IDENTIFIER = iCloud.com.flowtakt;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UIBackgroundModes = "audio fetch remote-notification";
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_FILE = "FlowTakt-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.flowtakt.FlowTakt;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -472,11 +552,11 @@
 				APP_INTENTS_METADATA_EXTRACTION = NO;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = CGVP85UZ44;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.flowtakt.FlowTaktTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -495,11 +575,11 @@
 				APP_INTENTS_METADATA_EXTRACTION = NO;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = CGVP85UZ44;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.flowtakt.FlowTaktTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -518,10 +598,10 @@
 				APP_INTENTS_METADATA_EXTRACTION = NO;
 				CODE_SIGN_ENTITLEMENTS = FlowTakt/FlowTakt.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = CGVP85UZ44;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.flowtakt.FlowTaktUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -540,10 +620,10 @@
 				APP_INTENTS_METADATA_EXTRACTION = NO;
 				CODE_SIGN_ENTITLEMENTS = FlowTakt/FlowTakt.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = CGVP85UZ44;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.flowtakt.FlowTaktUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -553,6 +633,48 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = FlowTakt;
+			};
+			name = Release;
+		};
+		CCAB000600000000000006 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APP_GROUP_IDENTIFIERS = group.com.flowtakt;
+				CODE_SIGN_ENTITLEMENTS = FlowTaktWidget/FlowTaktWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CGVP85UZ44;
+				INFOPLIST_FILE = "FlowTaktWidget-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.3.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.flowtakt.FlowTakt.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		CCAB000700000000000007 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APP_GROUP_IDENTIFIERS = group.com.flowtakt;
+				CODE_SIGN_ENTITLEMENTS = FlowTaktWidget/FlowTaktWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CGVP85UZ44;
+				INFOPLIST_FILE = "FlowTaktWidget-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 1.3.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.flowtakt.FlowTakt.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -591,6 +713,15 @@
 			buildConfigurations = (
 				CC10EC0E2FD7207F00FCF3F7 /* Debug */,
 				CC10EC0F2FD7207F00FCF3F7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CCAB000500000000000005 /* Build configuration list for PBXNativeTarget "FlowTaktWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CCAB000600000000000006 /* Debug */,
+				CCAB000700000000000007 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -1,5 +1,5 @@
 import Foundation
-import CoreData
+@preconcurrency import CoreData
 
 // MARK: - TaskService 协议
 
@@ -10,10 +10,12 @@ protocol TaskServiceProtocol {
     func fetchAllTasks() -> [Task]
     func fetchActiveTasks() -> [Task]
     func fetchCompletedTasks() -> [Task]
+    func fetchArchivedTasks() -> [Task]
     func incrementCompletedPomodoros(for task: Task)
 }
 
 // MARK: - TaskServiceProtocol 默认实现
+// 提供带默认参数的便捷方法，转发到协议主方法。具体类型必须实现主方法。
 
 extension TaskServiceProtocol {
     func createTask(title: String, notes: String?, estimatedPomodoros: Int16, priority: Int16, dueDate: Date?, recurrenceRule: String? = nil) -> Task {
@@ -27,6 +29,7 @@ extension TaskServiceProtocol {
 
 // MARK: - 任务服务实现
 
+@MainActor
 final class TaskService: TaskServiceProtocol {
     private let persistenceController: PersistenceController
 
@@ -134,6 +137,19 @@ final class TaskService: TaskServiceProtocol {
         }
     }
 
+    func fetchArchivedTasks() -> [Task] {
+        let request = Task.fetchRequest()
+        request.predicate = NSPredicate(format: "status == %@", TaskStatus.archived.rawValue)
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \Task.updatedAt, ascending: false)]
+        do {
+            return try viewContext.fetch(request)
+        } catch {
+            print("获取归档任务失败：\(error.localizedDescription)")
+            onError?(error)
+            return []
+        }
+    }
+
     func incrementCompletedPomodoros(for task: Task) {
         task.completedPomodoros += 1
         task.updatedAt = Date()
@@ -144,45 +160,55 @@ final class TaskService: TaskServiceProtocol {
 
     /// 完成重复任务时，自动创建下一个实例
     private func handleRecurringTaskCompletion(_ task: Task) {
-        viewContext.performAndWait {
-            guard task.isRecurring, let rule = task.recurrenceRule else { return }
+        guard task.isRecurring, let rule = task.recurrenceRule else { return }
 
-            // 检查是否超过重复截止日期
-            if let endDate = task.recurrenceEndDate, Date() > endDate {
-                return
-            }
-
-            // 计算下一个截止日期
-            let nextDueDate: Date? = {
-                guard let currentDue = task.dueDate else {
-                    // 如果没有截止日期，以当前时间为基准
-                    return nextDate(from: Date(), rule: rule)
-                }
-                return nextDate(from: currentDue, rule: rule)
-            }()
-
-            // 创建同标题的下一个任务实例
-            let nextTask = Task(context: viewContext)
-            nextTask.id = UUID()
-            nextTask.title = task.title
-            nextTask.notes = task.notes
-            nextTask.estimatedPomodoros = task.estimatedPomodoros
-            nextTask.completedPomodoros = 0
-            nextTask.priority = task.priority
-            nextTask.status = TaskStatus.active.rawValue
-            nextTask.dueDate = nextDueDate
-            nextTask.isRecurring = true
-            nextTask.recurrenceRule = rule
-            nextTask.recurrenceEndDate = task.recurrenceEndDate
-            // 复制标签关系（避免重复任务丢失分类）
-            nextTask.tags = task.tags
-            // displayOrder 设为已完成任务 displayOrder + 1，避免排序值冲突
-            nextTask.displayOrder = task.displayOrder + 1
-            nextTask.createdAt = Date()
-            nextTask.updatedAt = Date()
-            // 显式保存，确保重复任务的下一实例被持久化
-            persistenceController.save()
+        // 幂等：若已存在同标题的 active 实例（完成→重新激活→再完成等重复操作），不再创建，
+        // 避免同一条重复任务生成多个并列的下一实例
+        let existingRequest = Task.fetchRequest()
+        existingRequest.predicate = NSPredicate(
+            format: "title == %@ AND status == %@",
+            task.title, TaskStatus.active.rawValue
+        )
+        existingRequest.fetchLimit = 1
+        if let existing = try? viewContext.fetch(existingRequest), !existing.isEmpty {
+            return
         }
+
+        // 检查是否超过重复截止日期
+        if let endDate = task.recurrenceEndDate, Date() > endDate {
+            return
+        }
+
+        // 计算下一个截止日期
+        let nextDueDate: Date? = {
+            guard let currentDue = task.dueDate else {
+                // 如果没有截止日期，以当前时间为基准
+                return nextDate(from: Date(), rule: rule)
+            }
+            return nextDate(from: currentDue, rule: rule)
+        }()
+
+        // 创建同标题的下一个任务实例
+        let nextTask = Task(context: viewContext)
+        nextTask.id = UUID()
+        nextTask.title = task.title
+        nextTask.notes = task.notes
+        nextTask.estimatedPomodoros = task.estimatedPomodoros
+        nextTask.completedPomodoros = 0
+        nextTask.priority = task.priority
+        nextTask.status = TaskStatus.active.rawValue
+        nextTask.dueDate = nextDueDate
+        nextTask.isRecurring = true
+        nextTask.recurrenceRule = rule
+        nextTask.recurrenceEndDate = task.recurrenceEndDate
+        // 复制标签关系（避免重复任务丢失分类）
+        nextTask.tags = task.tags
+        // displayOrder 设为已完成任务 displayOrder + 1，避免排序值冲突
+        nextTask.displayOrder = task.displayOrder + 1
+        nextTask.createdAt = Date()
+        nextTask.updatedAt = Date()
+        // 显式保存，确保重复任务的下一实例被持久化
+        persistenceController.save()
     }
 
     /// 根据重复规则计算下一个日期

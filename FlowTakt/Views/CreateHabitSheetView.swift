@@ -5,6 +5,7 @@ import SwiftUI
 /// 新建习惯的 Sheet 视图（从 HabitListView 拆分出来以控制文件行数）
 struct CreateHabitSheetView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var l10n: L10n
 
     let onSave: (_ name: String, _ iconName: String?, _ colorHex: String?, _ frequency: String, _ targetCount: Int16) -> Void
 

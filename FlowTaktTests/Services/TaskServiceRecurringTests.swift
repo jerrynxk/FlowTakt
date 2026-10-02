@@ -295,4 +295,50 @@ final class TaskServiceRecurringTests: XCTestCase {
         let activeTasks = taskService.fetchActiveTasks()
         XCTAssertEqual(activeTasks.count, 0, "完成非重复任务不应生成新实例")
     }
+
+    // ========================================================================
+    // MARK: - 幂等：重复完成 / 完成→激活→再完成 不产生重复实例
+    // ========================================================================
+
+    func testCompleteRecurringTask_Twice_ThenOnlyOneNextInstance() {
+        // Given
+        let task = taskService.createTask(
+            title: "幂等日常任务",
+            notes: nil,
+            estimatedPomodoros: 1,
+            priority: 2,
+            dueDate: Date(),
+            recurrenceRule: "daily"
+        )
+
+        // When - 同一任务重复完成
+        taskService.updateTask(task, status: TaskStatus.completed.rawValue)
+        taskService.updateTask(task, status: TaskStatus.completed.rawValue)
+
+        // Then - 只应生成 1 个新实例
+        let activeTasks = taskService.fetchActiveTasks()
+        XCTAssertEqual(activeTasks.count, 1, "重复完成不应产生多个并列的下一实例")
+    }
+
+    func testCompleteRecurringTask_ReactivateThenCompleteAgain_ThenNoDuplicateInstance() {
+        // Given
+        let task = taskService.createTask(
+            title: "激活循环任务",
+            notes: nil,
+            estimatedPomodoros: 1,
+            priority: 2,
+            dueDate: Date(),
+            recurrenceRule: "weekly"
+        )
+        taskService.updateTask(task, status: TaskStatus.completed.rawValue)
+        XCTAssertEqual(taskService.fetchActiveTasks().count, 1)
+
+        // When - 原任务重新激活后再完成（此时已存在同标题 active 实例）
+        taskService.updateTask(task, status: TaskStatus.active.rawValue)
+        taskService.updateTask(task, status: TaskStatus.completed.rawValue)
+
+        // Then - 仍只应存在 1 个 active 实例
+        let activeTasks = taskService.fetchActiveTasks()
+        XCTAssertEqual(activeTasks.count, 1, "完成→激活→再完成不应创建重复实例")
+    }
 }

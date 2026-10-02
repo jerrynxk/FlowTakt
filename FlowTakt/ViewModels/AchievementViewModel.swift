@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CoreData
 
 // MARK: - AchievementViewModel
 
@@ -7,6 +8,7 @@ final class AchievementViewModel: ObservableObject {
     // MARK: - Dependencies
 
     private let achievementService: AchievementServiceProtocol
+    private let persistenceController: PersistenceController
 
     // MARK: - Published Properties
 
@@ -19,13 +21,30 @@ final class AchievementViewModel: ObservableObject {
     /// 今日获得的积分
     @Published var todayPoints: Int = 0
 
+    // MARK: - Private
+
+    private var cancellables = Set<AnyCancellable>()
+
     // MARK: - Init
 
-    init(achievementService: AchievementServiceProtocol) {
+    init(achievementService: AchievementServiceProtocol, persistenceController: PersistenceController) {
         self.achievementService = achievementService
+        self.persistenceController = persistenceController
 
         // 初始化时加载数据
         refresh()
+
+        // 监听 CoreData 上下文变化，自动刷新（当其他 ViewModel 解锁成就时）
+        NotificationCenter.default.publisher(
+            for: .NSManagedObjectContextObjectsDidChange,
+            object: persistenceController.viewContext
+        )
+        .receive(on: DispatchQueue.main)
+        .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+        .sink { [weak self] _ in
+            self?.refresh()
+        }
+        .store(in: &cancellables)
 
         // 监听数据库重置通知，及时清理已删除的 NSManagedObject 引用
         NotificationCenter.default.addObserver(

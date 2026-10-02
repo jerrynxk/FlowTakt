@@ -62,13 +62,10 @@ struct FocusPhaseBadge_Previews: PreviewProvider {
                 appBlockerService: AppBlockerService(),
                 audioService: AudioService(),
                 achievementService: AchievementService(
-                    persistenceController: PersistenceController.shared,
-                    focusService: FocusService(
-                        persistenceController: PersistenceController.shared,
-                        notificationService: NotificationService()
-                    )
+                    persistenceController: PersistenceController.shared
                 ),
-                taskService: TaskService(persistenceController: PersistenceController.shared)
+                taskService: TaskService(persistenceController: PersistenceController.shared),
+                speechService: SpeechService()
             ))
     }
 }

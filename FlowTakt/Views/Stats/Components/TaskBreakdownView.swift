@@ -56,6 +56,8 @@ struct TaskBreakdownView: View {
                         )
                         .fill(Color.breakGreen)
                         .animation(.easeInOut(duration: 0.6), value: completedRatio)
+                        .accessibilityLabel(L10n.shared.已完成)
+                        .accessibilityValue("\(completedCount)")
 
                         // 活跃（橙色）
                         DonutSlice(
@@ -64,6 +66,8 @@ struct TaskBreakdownView: View {
                         )
                         .fill(Color.orange)
                         .animation(.easeInOut(duration: 0.6), value: completedRatio)
+                        .accessibilityLabel(L10n.shared.活跃)
+                        .accessibilityValue("\(activeCount)")
                     } else {
                         // 无数据时显示空环
                         Circle()

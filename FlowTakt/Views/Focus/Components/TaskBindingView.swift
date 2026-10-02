@@ -1,77 +1,120 @@
 import SwiftUI
 
-// MARK: - 任务关联选择器
+// MARK: - 任务关联选择器（v1.3 UI 优化：卡片化，空态/任务详情双形态）
 
 struct TaskBindingView: View {
     @EnvironmentObject var focusViewModel: FocusViewModel
     @EnvironmentObject var taskViewModel: TaskViewModel
     @EnvironmentObject var l10n: L10n
 
-    @State private var selectedTaskId: UUID?
-
     var body: some View {
-        HStack {
-            Image(systemName: "link")
-                .font(.caption)
-                .foregroundColor(.secondary)
+        Menu {
+            // "无关联任务" 选项
+            Button(action: {
+                focusViewModel.selectedTask = nil
+            }) {
+                HStack {
+                    Text(L10n.shared.无关联任务)
+                    if focusViewModel.selectedTask == nil {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
 
-            Menu {
-                // "无关联任务" 选项
+            Divider()
+
+            // 活跃任务列表
+            ForEach(taskViewModel.activeTasks) { task in
                 Button(action: {
-                    selectedTaskId = nil
-                    focusViewModel.selectedTask = nil
+                    focusViewModel.selectedTask = task
                 }) {
                     HStack {
-                        Text(L10n.shared.无关联任务)
-                        if focusViewModel.selectedTask == nil {
+                        Text(task.title)
+                            .lineLimit(1)
+                        if focusViewModel.selectedTask?.id == task.id {
                             Image(systemName: "checkmark")
                         }
                     }
                 }
+            }
+        } label: {
+            content
+        }
+        // 无障碍：Menu 触发卡片补齐可读标签（VoiceOver 朗读「关联任务」+ 当前选中任务）
+        .accessibilityLabel(accessibilityMenuLabel)
+    }
 
-                Divider()
+    /// VoiceOver 菜单标签：有选中任务时读任务名，否则读「关联任务」
+    private var accessibilityMenuLabel: String {
+        if let task = focusViewModel.selectedTask {
+            return L10n.shared.关联任务 + "，" + task.title
+        }
+        return L10n.shared.关联任务
+    }
 
-                // 活跃任务列表
-                ForEach(taskViewModel.activeTasks) { task in
-                    Button(action: {
-                        selectedTaskId = task.id
-                        focusViewModel.selectedTask = task
-                    }) {
-                        HStack {
-                            Text(task.title)
-                                .lineLimit(1)
-                            if focusViewModel.selectedTask?.id == task.id {
-                                Image(systemName: "checkmark")
-                            }
+    /// 卡片内容：有任务显示任务详情，无任务显示占位提示
+    private var content: some View {
+        Group {
+            if let task = focusViewModel.selectedTask {
+                HStack(spacing: 10) {
+                    // 状态圆点（按优先级着色）
+                    Circle()
+                        .fill(priorityColor(task.priority))
+                        .frame(width: 8, height: 8)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(task.title)
+                            .font(.footnote.weight(.medium))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+
+                        // 番茄进度
+                        HStack(spacing: 3) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 9))
+                                .foregroundColor(.focusRed.opacity(0.8))
+                            Text(L10n.shared.番茄进度(Int(task.completedPomodoros), Int(task.estimatedPomodoros)))
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
                         }
                     }
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    if let task = focusViewModel.selectedTask {
-                        Text(task.title)
-                            .font(.subheadline)
-                            .lineLimit(1)
-                            .foregroundColor(.primary)
-                    } else {
-                        Text(L10n.shared.关联任务)
-                            .font(.subheadline)
-                            .lineLimit(1)
-                            .foregroundColor(.secondary)
-                    }
+
+                    Spacer()
 
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
+                        .font(.system(size: 10))
                         .foregroundColor(.secondary)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color(.systemGray6))
-                .cornerRadius(8)
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "link")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+
+                    Text(L10n.shared.关联任务)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
             }
         }
-        .onAppear {
-            selectedTaskId = focusViewModel.selectedTask?.id
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .cardStyle()
+    }
+
+    private func priorityColor(_ priority: Int16) -> Color {
+        switch priority {
+        case 1: return .blue
+        case 2: return .orange
+        case 3: return .red
+        default: return .secondary
         }
     }
 }
@@ -90,13 +133,10 @@ struct TaskBindingView_Previews: PreviewProvider {
                 appBlockerService: AppBlockerService(),
                 audioService: AudioService(),
                 achievementService: AchievementService(
-                    persistenceController: PersistenceController.shared,
-                    focusService: FocusService(
-                        persistenceController: PersistenceController.shared,
-                        notificationService: NotificationService()
-                    )
+                    persistenceController: PersistenceController.shared
                 ),
-                taskService: TaskService(persistenceController: PersistenceController.shared)
+                taskService: TaskService(persistenceController: PersistenceController.shared),
+                speechService: SpeechService()
             ))
             .environmentObject(TaskViewModel(
                 taskService: TaskService(persistenceController: PersistenceController.shared),

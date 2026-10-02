@@ -7,9 +7,10 @@ struct AchievementListView: View {
     @EnvironmentObject var l10n: L10n
     @State private var justUnlockedAchievement: Achievement? = nil
 
+    // v1.3.4p：iPad 全量适配 — GridItem(.adaptive(minimum:160)) 让列数随容器宽度自动调整：
+    // iPhone 紧凑宽度（~398pt）保持 2 列，iPad 13" regular 宽度（~1046pt）扩展到 5-6 列
     private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12),
+        GridItem(.adaptive(minimum: 160, maximum: .infinity), spacing: 12)
     ]
 
     /// 按分类排序的成就列表
@@ -67,11 +68,13 @@ struct AchievementListView: View {
             // 成就网格
             LazyVGrid(columns: columns, spacing: 12) {
                 ForEach(group.achievements) { achievement in
-                    AchievementBadgeView(achievement: achievement)
-                        .environmentObject(achievementViewModel)
-                        .onTapGesture {
-                            handleTap(achievement: achievement)
-                        }
+                    Button {
+                        handleTap(achievement: achievement)
+                    } label: {
+                        AchievementBadgeView(achievement: achievement)
+                            .environmentObject(achievementViewModel)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal)
@@ -154,12 +157,9 @@ struct AchievementListView_Previews: PreviewProvider {
         AchievementListView()
             .environmentObject(AchievementViewModel(
                 achievementService: AchievementService(
-                    persistenceController: PersistenceController.shared,
-                    focusService: FocusService(
-                        persistenceController: PersistenceController.shared,
-                        notificationService: NotificationService()
-                    )
-                )
+                    persistenceController: PersistenceController.shared
+                ),
+                persistenceController: PersistenceController.shared
             ))
     }
 }

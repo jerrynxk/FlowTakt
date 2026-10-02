@@ -8,19 +8,25 @@ import Combine
 @MainActor
 final class AchievementViewModelTests: XCTestCase {
     var mockAchievementService: MockAchievementService!
+    var persistence: PersistenceController!
     var viewModel: AchievementViewModel!
     var cancellables: Set<AnyCancellable>!
 
     override func setUp() {
         super.setUp()
         mockAchievementService = MockAchievementService()
-        viewModel = AchievementViewModel(achievementService: mockAchievementService)
+        persistence = PersistenceController(inMemory: true)
+        viewModel = AchievementViewModel(
+            achievementService: mockAchievementService,
+            persistenceController: persistence
+        )
         cancellables = Set<AnyCancellable>()
     }
 
     override func tearDown() {
         viewModel = nil
         mockAchievementService = nil
+        persistence = nil
         cancellables = nil
         super.tearDown()
     }

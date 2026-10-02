@@ -53,6 +53,10 @@ struct StreakBadgeView: View {
         }
         .padding(16)
         .cardStyle()
+        // 无障碍修复（2026-08-12）：合并为单一元素，避免容器与子元素重复朗读
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.shared.连续专注)
+        .accessibilityValue("\(statsViewModel.currentStreak) \(L10n.shared.天)")
     }
 }
 

@@ -6,17 +6,39 @@ struct ScheduleView: View {
     @EnvironmentObject var scheduleViewModel: ScheduleViewModel
     @EnvironmentObject var taskViewModel: TaskViewModel
     @EnvironmentObject var l10n: L10n
+    @EnvironmentObject var appDependency: AppDependency
 
     @State private var showNewEventSheet = false
     @State private var editingEvent: ScheduleItem? = nil
+    /// 来自 Widget 深链（flowtakt://schedule/<id>）待高亮的事件
+    @State private var highlightedEventID: UUID? = nil
+    /// 视图模式：月 / 周（A4）
+    @State private var viewMode: ScheduleViewMode = .month
+    /// 自然语言快速添加（B2）
+    @State private var showQuickAddAlert = false
+    @State private var quickAddText = ""
+
+    /// 日程视图模式
+    enum ScheduleViewMode: String, CaseIterable, Identifiable {
+        case month
+        case week
+        var id: String { rawValue }
+    }
 
     private let calendar = Calendar.current
     private let weekdaySymbols: [String] = {
-        var syms = Calendar.current.veryShortWeekdaySymbols
-        // Shift so Monday is first (system returns Sunday first)
-        let sun = syms.removeFirst()
-        syms.append(sun)
-        return syms
+        let cal = Calendar.current
+        let syms = cal.veryShortWeekdaySymbols
+        let firstWeekday = cal.firstWeekday // 1=Sunday, 2=Monday, etc.
+        if firstWeekday == 1 {
+            // Sunday-first locale: keep as-is（已是周日开头）
+            return syms
+        } else {
+            // Monday-first / 其他 locale：旋转到指定首日
+            let prefix = Array(syms[(firstWeekday - 1)...])
+            let suffix = Array(syms[..<(firstWeekday - 1)])
+            return prefix + suffix
+        }
     }()
 
     // 缓存 DateFormatter 实例（避免 body 重绘时重复创建）
@@ -37,9 +59,27 @@ struct ScheduleView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                monthHeader
-                weekdayHeader
-                calendarGrid
+                // 月 / 周 视图切换
+                Picker("", selection: $viewMode) {
+                    Text(L10n.shared.月视图).tag(ScheduleViewMode.month)
+                    Text(L10n.shared.周视图).tag(ScheduleViewMode.week)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .onChange(of: viewMode) { mode in
+                    if mode == .week {
+                        scheduleViewModel.refreshForWeek(containing: scheduleViewModel.selectedDate)
+                    }
+                }
+
+                if viewMode == .month {
+                    monthHeader
+                    weekdayHeader
+                    calendarGrid
+                } else {
+                    weekView
+                }
 
                 Divider()
                     .padding(.horizontal, 16)
@@ -49,8 +89,41 @@ struct ScheduleView: View {
             .background(Color.appBackground)
             .navigationTitle(L10n.shared.日程)
             .navigationBarTitleDisplayMode(.large)
+            // 消费来自 Widget 深链的具体事件定位（flowtakt://schedule/<id>）
+            .onReceive(appDependency.$pendingScheduleItemID) { id in
+                guard let id, !id.isEmpty else { return }
+                guard let uuid = UUID(uuidString: id) else {
+                    appDependency.pendingScheduleItemID = nil
+                    return
+                }
+                // 先查当前已加载（当月）事件；若目标事件在下月（如生日/纪念日），
+                // 经 Service 按 ID 全库定位后切换月份再高亮，避免深链静默丢失
+                guard let event = scheduleViewModel.events.first(where: { $0.id == uuid })
+                    ?? scheduleViewModel.findEvent(byID: uuid) else {
+                    appDependency.pendingScheduleItemID = nil
+                    return
+                }
+                if !scheduleViewModel.events.contains(where: { $0.id == event.id }) {
+                    scheduleViewModel.refreshForMonth(event.startDate)
+                }
+                scheduleViewModel.refreshForDate(event.startDate)
+                // 先清后设，确保连续两次点击 Widget 中同一事件也能重新高亮
+                highlightedEventID = nil
+                DispatchQueue.main.async { highlightedEventID = event.id }
+                appDependency.pendingScheduleItemID = nil
+            }
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    // 自然语言快速添加（B2）
+                    Button {
+                        quickAddText = ""
+                        showQuickAddAlert = true
+                    } label: {
+                        Image(systemName: "bolt.fill")
+                            .fontWeight(.semibold)
+                    }
+                    .accessibilityLabel(L10n.shared.快速添加日程)
+
                     Button {
                         showNewEventSheet = true
                     } label: {
@@ -60,20 +133,33 @@ struct ScheduleView: View {
                     .accessibilityLabel(L10n.shared.新建事件)
                 }
             }
+            .alert(L10n.shared.快速添加日程, isPresented: $showQuickAddAlert) {
+                TextField(L10n.shared.快速添加提示, text: $quickAddText)
+                Button(L10n.shared.取消, role: .cancel) {}
+                Button(L10n.shared.确定) {
+                    handleQuickAdd()
+                }
+            } message: {
+                Text(L10n.shared.快速添加提示)
+            }
             .sheet(isPresented: $showNewEventSheet) {
                 EventEditView(
                     isPresented: $showNewEventSheet,
                     editingEvent: nil,
                     initialDate: scheduleViewModel.selectedDate
-                ) { title, startDate, endDate, isAllDay, location, notes, colorHex in
+                ) { data in
                     scheduleViewModel.createEvent(
-                        title: title,
-                        startDate: startDate,
-                        endDate: endDate,
-                        isAllDay: isAllDay,
-                        location: location,
-                        notes: notes,
-                        colorHex: colorHex,
+                        title: data.title,
+                        startDate: data.startDate,
+                        endDate: data.endDate,
+                        isAllDay: data.isAllDay,
+                        location: data.location,
+                        notes: data.notes,
+                        colorHex: data.colorHex,
+                        category: data.category,
+                        repeatRule: data.category.repeatsYearly ? .yearly : RepeatRule.none,
+                        reminderEnabled: data.reminderEnabled,
+                        reminderLeadMinutes: data.reminderLeadMinutes,
                         task: nil
                     )
                 }
@@ -86,16 +172,20 @@ struct ScheduleView: View {
                     ),
                     editingEvent: event,
                     initialDate: scheduleViewModel.selectedDate
-                ) { title, startDate, endDate, isAllDay, location, notes, colorHex in
+                ) { data in
                     scheduleViewModel.updateEvent(
                         event,
-                        title: title,
-                        startDate: startDate,
-                        endDate: endDate,
-                        isAllDay: isAllDay,
-                        location: location,
-                        notes: notes,
-                        colorHex: colorHex
+                        title: data.title,
+                        startDate: data.startDate,
+                        endDate: data.endDate,
+                        isAllDay: data.isAllDay,
+                        location: data.location,
+                        notes: data.notes,
+                        colorHex: data.colorHex,
+                        category: data.category,
+                        repeatRule: data.category.repeatsYearly ? .yearly : RepeatRule.none,
+                        reminderEnabled: data.reminderEnabled,
+                        reminderLeadMinutes: data.reminderLeadMinutes
                     )
                 }
             }
@@ -197,6 +287,8 @@ struct ScheduleView: View {
         let eventsByDay = eventsByDayDictionary
 
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 4) {
+            // 动态格数（审查修复：注释不再声称"固定 42 格"——generateDays() 依月份首日
+            // 周位置生成 28~42 格，月末最后一行可能不满 7 格）；索引作 id 在此场景安全
             ForEach(days.indices, id: \.self) { index in
                 if let date = days[index] {
                     dayCell(date: date, hasEvents: eventsByDay[calendar.startOfDay(for: date)] != nil)
@@ -208,6 +300,142 @@ struct ScheduleView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
+    }
+
+    // MARK: - Week View（A4）
+
+    /// 周视图：一周 7 天分区，每天列出事件（可点击编辑）
+    private var weekView: some View {
+        VStack(spacing: 0) {
+            // 周导航头部
+            HStack {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        scheduleViewModel.shiftWeek(by: -1)
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.focusRed)
+                }
+                .accessibilityLabel(L10n.shared.上一周)
+
+                Spacer()
+
+                Text(weekRangeText)
+                    .font(.headline)
+                    .fontWeight(.bold)
+
+                Spacer()
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        scheduleViewModel.shiftWeek(by: 1)
+                    }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.focusRed)
+                }
+                .accessibilityLabel(L10n.shared.下一周)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+
+            List {
+                ForEach(0..<7, id: \.self) { offset in
+                    if let day = calendar.date(byAdding: .day, value: offset, to: scheduleViewModel.currentWeekStart) {
+                        let dayEvents = scheduleViewModel.weekEvents
+                            .filter { calendar.isDate($0.startDate, inSameDayAs: day) }
+                        Section {
+                            if dayEvents.isEmpty {
+                                Text(L10n.shared.当日无日程)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                            } else {
+                                ForEach(dayEvents) { event in
+                                    eventRow(event)
+                                        .contentShape(Rectangle())
+                                        .background(
+                                            highlightedEventID == event.id
+                                                ? Color.focusRed.opacity(0.12)
+                                                : Color.clear
+                                        )
+                                        .onTapGesture {
+                                            highlightedEventID = nil
+                                            scheduleViewModel.refreshForDate(event.startDate)
+                                            editingEvent = event
+                                        }
+                                        // 无障碍：读屏可操作（onTapGesture 对 VoiceOver 不可达）
+                                        .accessibilityAddTraits(.isButton)
+                                        .accessibilityAction {
+                                            highlightedEventID = nil
+                                            scheduleViewModel.refreshForDate(event.startDate)
+                                            editingEvent = event
+                                        }
+                                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                                }
+                                .onDelete { indexSet in
+                                    for index in indexSet {
+                                        scheduleViewModel.deleteEvent(dayEvents[index])
+                                    }
+                                }
+                            }
+                        } header: {
+                            DateSectionHeader(date: day)
+                        }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+        }
+    }
+
+    /// 周范围文本（如 8/10 – 8/16）
+    private var weekRangeText: String {
+        let start = scheduleViewModel.currentWeekStart
+        let end = calendar.date(byAdding: .day, value: 6, to: start) ?? start
+        return "\(Self.weekRangeFormatter.string(from: start)) – \(Self.weekRangeFormatter.string(from: end))"
+    }
+
+    /// 周范围日期格式化器（静态缓存，审查 #11）
+    private static let weekRangeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale.current
+        f.dateFormat = "M/d"
+        return f
+    }()
+
+    // MARK: - 自然语言快速添加（B2）
+
+    /// 解析输入并创建事件；解析失败时回退到完整新建表单
+    private func handleQuickAdd() {
+        guard let draft = EventDraftParser.parse(quickAddText) else {
+            showNewEventSheet = true   // 无法识别 → 打开完整表单让用户手填
+            return
+        }
+        scheduleViewModel.createEvent(
+            title: draft.title,
+            startDate: draft.startDate,
+            endDate: draft.endDate,
+            isAllDay: false,
+            location: nil,
+            notes: nil,
+            colorHex: nil,
+            category: .event,
+            repeatRule: .none,
+            reminderEnabled: false,
+            reminderLeadMinutes: 0,
+            task: nil
+        )
+        scheduleViewModel.refreshForMonth(draft.startDate)
+        scheduleViewModel.refreshForDate(draft.startDate)
+        scheduleViewModel.refreshForWeek(containing: draft.startDate)
     }
 
     /// 按天分组的事件字典，避免每个日历单元格重复遍历全部事件
@@ -227,6 +455,7 @@ struct ScheduleView: View {
         let dayNumber = calendar.component(.day, from: date)
 
         return Button {
+            highlightedEventID = nil
             scheduleViewModel.refreshForDate(date)
         } label: {
             ZStack {
@@ -269,8 +498,8 @@ struct ScheduleView: View {
             .aspectRatio(1, contentMode: .fit)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(calendar.isDateInToday(date) ? L10n.shared.今日 : "\(dayNumber)")
-        .accessibilityValue(hasEvents ? L10n.shared.有日程 : L10n.shared.当日无日程)
+        .accessibilityLabel(dayCellAccessibilityLabel(date: date, dayNumber: dayNumber))
+        .accessibilityValue(dayCellAccessibilityValue(hasEvents: hasEvents, date: date))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -285,14 +514,24 @@ struct ScheduleView: View {
         } else {
             List {
                 Section {
-                    ForEach(events) { event in
-                        eventRow(event)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                editingEvent = event
-                            }
-                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                    }
+                ForEach(events) { event in
+                    eventRow(event)
+                        .contentShape(Rectangle())
+                        .background(
+                            highlightedEventID == event.id
+                                ? Color.focusRed.opacity(0.12)
+                                : Color.clear
+                        )
+                        .onTapGesture {
+                            editingEvent = event
+                        }
+                        // 无障碍：读屏可操作
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction {
+                            editingEvent = event
+                        }
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                }
                     .onDelete { indexSet in
                         for index in indexSet {
                             let event = events[index]
@@ -333,10 +572,18 @@ struct ScheduleView: View {
                 .frame(width: 10, height: 10)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(event.title)
-                    .font(.body)
-                    .fontWeight(.semibold)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    if event.reminderEnabled {
+                        Image(systemName: "bell.fill")
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+                            .accessibilityLabel(L10n.shared.已开启提醒)
+                    }
+                    Text(event.title)
+                        .font(.body)
+                        .fontWeight(.semibold)
+                        .lineLimit(1)
+                }
 
                 HStack(spacing: 6) {
                     Image(systemName: "clock")
@@ -385,6 +632,24 @@ struct ScheduleView: View {
 
     // MARK: - Helpers
 
+    /// 日历单元格无障碍标签（包含日期、农历、事件数）
+    private func dayCellAccessibilityLabel(date: Date, dayNumber: Int) -> String {
+        let lunarText = date.lunarCellText
+        var parts: [String] = [calendar.isDateInToday(date) ? L10n.shared.今日 : "\(dayNumber)"]
+        if !lunarText.isEmpty {
+            parts.append(lunarText)
+        }
+        return parts.joined(separator: "，")
+    }
+
+    private func dayCellAccessibilityValue(hasEvents: Bool, date: Date) -> String {
+        let eventsOnDay = eventsByDayDictionary[calendar.startOfDay(for: date)]?.count ?? 0
+        if hasEvents {
+            return L10n.shared.dayEventCount(eventsOnDay)
+        }
+        return L10n.shared.当日无日程
+    }
+
     private var selectedDateText: String {
         let date = scheduleViewModel.selectedDate
         if calendar.isDateInToday(date) {
@@ -413,8 +678,8 @@ struct ScheduleView: View {
 
         let firstWeekday = calendar.component(.weekday, from: monthStart)
         // Gregorian: 1=Sun, 2=Mon, ... , 7=Sat
-        // We want Monday=0 offset, so: Sun(1)->6, Mon(2)->0, Tue(3)->1, ...
-        let offset = firstWeekday == 1 ? 6 : firstWeekday - 2
+        // 根据 calendar.firstWeekday 计算相对于网格第一列的偏移
+        let offset = (firstWeekday - calendar.firstWeekday + 7) % 7
 
         var days: [Date?] = []
 
@@ -424,7 +689,9 @@ struct ScheduleView: View {
         }
 
         // Day cells
-        for day in 1...numberOfDays {
+        // 崩溃修复（2026-10-02）：`ClosedRange` 要求 lower <= upper，
+        // numberOfDays 为 0 时 `1...0` 会 trap。max(1, ...) 兜底。
+        for day in 1...max(1, numberOfDays) {
             if let date = calendar.date(byAdding: .day, value: day - 1, to: monthStart) {
                 days.append(date)
             }
@@ -440,4 +707,5 @@ struct ScheduleView: View {
     ScheduleView()
         .environmentObject(AppDependency().scheduleViewModel)
         .environmentObject(AppDependency().taskViewModel)
+        .environmentObject(AppDependency())
 }

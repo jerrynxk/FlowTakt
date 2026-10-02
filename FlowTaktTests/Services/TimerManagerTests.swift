@@ -180,6 +180,47 @@ final class TimerManagerTests: XCTestCase {
         XCTAssertEqual(timerManager.timerState, .idle)
     }
 
+    // ========================================================================
+    // MARK: - currentPausedDuration（审查修复 P1 #5 新增属性）
+    // ========================================================================
+
+    func testCurrentPausedDuration_WhenRunning_ThenZero() {
+        // Given
+        timerManager.start(duration: 1500)
+
+        // When / Then
+        XCTAssertEqual(timerManager.currentPausedDuration, 0, "运行中不应有当前暂停段")
+    }
+
+    func testCurrentPausedDuration_WhenPaused_ThenReturnsElapsedSincePause() {
+        // Given
+        timerManager.start(duration: 1500)
+        timerManager.pause()
+
+        // When
+        // pauseDate 已记录，currentPausedDuration 应 ≥ 0 且随时间增长
+        let v1 = timerManager.currentPausedDuration
+        XCTAssertGreaterThanOrEqual(v1, 0, "暂停后 currentPausedDuration 非负")
+
+        // 短暂等待后应增大（毫秒级精度可能为 0，用两次读取保证非负与单调）
+        Thread.sleep(forTimeInterval: 0.05)
+        let v2 = timerManager.currentPausedDuration
+        XCTAssertGreaterThanOrEqual(v2, v1, "currentPausedDuration 应随时间单调不减")
+    }
+
+    func testCurrentPausedDuration_AfterResume_ThenZero() {
+        // Given
+        timerManager.start(duration: 1500)
+        timerManager.pause()
+        XCTAssertGreaterThanOrEqual(timerManager.currentPausedDuration, 0)
+
+        // When
+        timerManager.resume()
+
+        // Then
+        XCTAssertEqual(timerManager.currentPausedDuration, 0, "恢复后 pauseDate 清空，无当前暂停段")
+    }
+
     func testReset_GivenIdleState_ThenStateRemainsIdle() {
         // Given - 初始 idle
 
@@ -306,5 +347,71 @@ final class TimerManagerTests: XCTestCase {
         XCTAssertEqual(timerManager.remainingSeconds, 0)
         XCTAssertEqual(timerManager.elapsedSeconds, 0)
         XCTAssertEqual(timerManager.totalDuration, 0)
+    }
+
+    // ========================================================================
+    // MARK: - 暂停时长累计（回归：actualDuration 扣除暂停时间）
+    // ========================================================================
+
+    func testPauseResume_ThenTotalPausedDurationAccumulates() {
+        // Given
+        timerManager.start(duration: 1500)
+
+        // When - 暂停约 0.2s 后恢复
+        timerManager.pause()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        timerManager.resume()
+
+        // Then - 暂停时长被累计
+        XCTAssertGreaterThanOrEqual(timerManager.totalPausedDuration, 0.19, "暂停时长应被结算到 totalPausedDuration")
+        XCTAssertLessThan(timerManager.totalPausedDuration, 0.5)
+    }
+
+    func testMultiplePauseResume_ThenTotalPausedDurationAccumulates() {
+        // Given
+        timerManager.start(duration: 1500)
+
+        // When - 两次暂停/恢复
+        timerManager.pause()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        timerManager.resume()
+        timerManager.pause()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        timerManager.resume()
+
+        // Then - 两次暂停时长累加
+        XCTAssertGreaterThanOrEqual(timerManager.totalPausedDuration, 0.19)
+    }
+
+    func testReset_ThenTotalPausedDurationCleared() {
+        // Given
+        timerManager.start(duration: 1500)
+        timerManager.pause()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        timerManager.resume()
+
+        // When
+        timerManager.reset()
+
+        // Then
+        XCTAssertEqual(timerManager.totalPausedDuration, 0, "reset 后暂停时长应清零")
+    }
+
+    // ========================================================================
+    // MARK: - 延迟 stop 竞态（回归：generation token 防误停新计时器）
+    // ========================================================================
+
+    func testFinishedThenImmediateStart_NotStoppedByDelayedCleanup() {
+        // Given - 短时长快速走到 finished（延迟 stop 已排队）
+        timerManager.start(duration: 0.2)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.25))
+
+        // When - 立即启动新计时（旧 generation 的延迟 stop 不应打断）
+        timerManager.start(duration: 300)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+
+        // Then - 新计时保持运行，未被延迟 stop 误停
+        XCTAssertEqual(timerManager.timerState, .running, "新计时不应被旧 generation 的延迟 stop 打断")
+        XCTAssertEqual(timerManager.totalDuration, 300)
     }
 }

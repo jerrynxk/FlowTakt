@@ -138,10 +138,10 @@ struct TaskDetailView: View {
             // MARK: 归档信息
             Section {
                 VStack(spacing: 8) {
-                    infoRow(label: "创建时间", value: formattedDate(task.createdAt))
-                    infoRow(label: "更新时间", value: formattedDate(task.updatedAt))
+                    infoRow(label: L10n.shared.创建时间, value: formattedDate(task.createdAt))
+                    infoRow(label: L10n.shared.更新时间, value: formattedDate(task.updatedAt))
                     if let completedAt = task.completedAt {
-                        infoRow(label: "完成时间", value: formattedDate(completedAt))
+                        infoRow(label: L10n.shared.完成时间, value: formattedDate(completedAt))
                     }
                 }
                 .font(.caption)
@@ -176,7 +176,7 @@ struct TaskDetailView: View {
                 .disabled(!hasChanges || title.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
-        .alert("确认删除", isPresented: $showDeleteConfirmation) {
+        .alert(L10n.shared.确认删除, isPresented: $showDeleteConfirmation) {
             Button(L10n.shared.取消, role: .cancel) { }
             Button(L10n.shared.删除, role: .destructive) {
                 deleteTask()
@@ -226,14 +226,19 @@ struct TaskDetailView: View {
     }
 
     private func saveChanges() {
-        task.title = title.trimmingCharacters(in: .whitespaces)
-        task.notes = notes.trimmingCharacters(in: .whitespaces).isEmpty ? nil : notes
-        task.estimatedPomodoros = estimatedPomodoros
-        task.priority = priority
-        task.dueDate = hasDueDate ? dueDate : nil
-        task.updatedAt = Date()
+        let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
+        let trimmedNotes = notes.trimmingCharacters(in: .whitespaces).isEmpty ? nil : notes.trimmingCharacters(in: .whitespaces)
+        let targetDueDate = hasDueDate ? dueDate : nil
 
-        taskViewModel.refreshTask(task)
+        // 通过 ViewModel 更新任务，避免 View 直接修改 NSManagedObject
+        taskViewModel.updateTask(
+            task,
+            title: trimmedTitle,
+            notes: trimmedNotes,
+            estimatedPomodoros: estimatedPomodoros,
+            priority: priority,
+            dueDate: targetDueDate
+        )
         hasChanges = false
     }
 
@@ -242,16 +247,20 @@ struct TaskDetailView: View {
         dismiss()
     }
 
-    private func formattedDate(_ date: Date) -> String {
+    private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return formatter
+    }()
+
+    private func formattedDate(_ date: Date) -> String {
+        Self.dateFormatter.string(from: date)
     }
 
-    private func infoRow(label: LocalizedStringKey, value: String) -> some View {
+    private func infoRow(label: String, value: String) -> some View {
         HStack {
-            Text(label)
+            Text(LocalizedStringKey(label))
             Spacer()
             Text(value)
         }

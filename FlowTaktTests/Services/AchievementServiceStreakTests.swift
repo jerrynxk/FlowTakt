@@ -9,24 +9,15 @@ import CoreData
 final class AchievementServiceStreakTests: XCTestCase {
     var persistence: PersistenceController!
     var achievementService: AchievementService!
-    var focusService: FocusService!
-    var notificationService: MockNotificationService!
 
     override func setUp() {
         super.setUp()
         persistence = PersistenceController(inMemory: true)
-        notificationService = MockNotificationService()
-        focusService = FocusService(persistenceController: persistence,
-                                    notificationService: notificationService)
-        achievementService = AchievementService(persistenceController: persistence,
-                                                focusService: focusService)
-        focusService.achievementService = achievementService
+        achievementService = AchievementService(persistenceController: persistence)
     }
 
     override func tearDown() {
         achievementService = nil
-        focusService = nil
-        notificationService = nil
         persistence = nil
         super.tearDown()
     }

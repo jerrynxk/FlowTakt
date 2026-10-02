@@ -109,6 +109,7 @@ struct HabitListView: View {
             .buttonStyle(.borderedProminent)
             .tint(.focusRed)
             .padding(.top, 4)
+            .accessibilityLabel(L10n.shared.创建第一个习惯)
 
             Spacer()
         }
@@ -248,7 +249,8 @@ private struct HabitRowView: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(habitViewModel.dayHasRecord(habit: habit, date: Date()) ? L10n.shared.完成 : L10n.shared.计时)
+        // 无障碍修复（2026-08-12）：未打卡读「打卡」而非语义错误的「计时」
+        .accessibilityLabel(habitViewModel.dayHasRecord(habit: habit, date: Date()) ? L10n.shared.完成 : L10n.shared.打卡)
     }
 
     // MARK: - Helpers

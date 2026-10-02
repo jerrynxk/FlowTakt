@@ -15,27 +15,6 @@ extension FocusSession {
         return L10n.shared.分钟(minutes)
     }
 
-    /// 专注阶段显示名称，支持国际化
-    var phaseDisplayName: String {
-        switch phase {
-        case FocusPhase.focus.rawValue: return L10n.shared.focus
-        case FocusPhase.shortBreak.rawValue: return L10n.shared.短休息
-        case FocusPhase.longBreak.rawValue: return L10n.shared.长休息
-        default: return phase
-        }
-    }
-
-    /// 状态显示名称，支持国际化
-    var statusDisplayName: String {
-        switch status {
-        case SessionStatus.running.rawValue: return L10n.shared.进行中
-        case SessionStatus.completed.rawValue: return L10n.shared.已完成
-        case SessionStatus.interrupted.rawValue: return L10n.shared.已中断
-        case SessionStatus.abandoned.rawValue: return L10n.shared.已放弃
-        default: return status
-        }
-    }
-
     /// 是否已完成
     var isCompleted: Bool {
         status == SessionStatus.completed.rawValue

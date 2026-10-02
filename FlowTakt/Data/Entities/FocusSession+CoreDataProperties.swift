@@ -19,6 +19,7 @@ extension FocusSession {
     @NSManaged public var roundIndex: Int16
     @NSManaged public var status: String
     @NSManaged public var earnedPoints: Int16
+    @NSManaged public var interruptionReason: String?
     @NSManaged public var createdAt: Date
     @NSManaged public var updatedAt: Date
 

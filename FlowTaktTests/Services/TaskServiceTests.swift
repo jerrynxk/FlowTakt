@@ -253,7 +253,7 @@ final class TaskServiceTests: XCTestCase {
 
     func testFetchActiveTasks_GivenMixedStatus_ThenReturnsOnlyActive() {
         // Given
-        let task1 = taskService.createTask(title: "活跃任务", notes: nil, estimatedPomodoros: 1, priority: 1, dueDate: nil)
+        _ = taskService.createTask(title: "活跃任务", notes: nil, estimatedPomodoros: 1, priority: 1, dueDate: nil)
         let task2 = taskService.createTask(title: "即将完成", notes: nil, estimatedPomodoros: 1, priority: 1, dueDate: nil)
         taskService.updateTask(task2, title: nil, notes: nil, estimatedPomodoros: nil, priority: nil, status: TaskStatus.completed.rawValue, dueDate: nil)
 

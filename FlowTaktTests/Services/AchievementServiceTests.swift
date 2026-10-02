@@ -8,22 +8,18 @@ import CoreData
 @MainActor
 final class AchievementServiceTests: XCTestCase {
     var persistence: PersistenceController!
-    var mockFocusService: MockFocusService!
     var achievementService: AchievementService!
 
     override func setUp() {
         super.setUp()
         persistence = PersistenceController(inMemory: true)
-        mockFocusService = MockFocusService()
         achievementService = AchievementService(
-            persistenceController: persistence,
-            focusService: mockFocusService
+            persistenceController: persistence
         )
     }
 
     override func tearDown() {
         achievementService = nil
-        mockFocusService = nil
         persistence = nil
         super.tearDown()
     }
@@ -412,5 +408,82 @@ final class AchievementServiceTests: XCTestCase {
 
         // Then
         XCTAssertEqual(total, 30)
+    }
+
+    // ========================================================================
+    // MARK: - 审查修复回归测试（2026-08-12）：只统计专注阶段完成会话
+    // ========================================================================
+
+    func testCheckAndUnlockAchievements_OnlyBreakCompleted_ThenFirstPomodoroDoesNotUnlock() {
+        // Given：只有 1 个【短休息】完成会话，无专注完成
+        _ = achievementService.fetchAllAchievements()
+        let context = persistence.viewContext
+        let session = FocusSession(context: context)
+        session.id = UUID()
+        session.startTime = Date()
+        session.endTime = Date()
+        session.plannedDuration = 300
+        session.actualDuration = 300
+        session.phase = FocusPhase.shortBreak.rawValue
+        session.roundIndex = 1
+        session.status = SessionStatus.completed.rawValue
+        session.earnedPoints = 0
+        session.createdAt = Date()
+        session.updatedAt = Date()
+        try? context.save()
+
+        // When
+        achievementService.checkAndUnlockAchievements()
+
+        // Then：休息完成不算番茄数，first_pomodoro 不应解锁
+        let allAchs = achievementService.fetchAllAchievements()
+        let firstPomodoro = allAchs.first { $0.identifier == "first_pomodoro" }
+        XCTAssertNotNil(firstPomodoro)
+        XCTAssertFalse(firstPomodoro?.isUnlocked ?? true, "仅完成短休息不应解锁 '初次专注' 成就")
+    }
+
+    func testCheckAndUnlockAchievements_OneFocusCompleted_ThenFirstPomodoroUnlocks() {
+        // Given：1 个专注完成 + 2 个休息完成（验证只计专注）
+        _ = achievementService.fetchAllAchievements()
+        let context = persistence.viewContext
+
+        let focus = FocusSession(context: context)
+        focus.id = UUID()
+        focus.startTime = Date().addingTimeInterval(-7200)
+        focus.endTime = Date()
+        focus.plannedDuration = 1500
+        focus.actualDuration = 1500
+        focus.phase = FocusPhase.focus.rawValue
+        focus.roundIndex = 1
+        focus.status = SessionStatus.completed.rawValue
+        focus.earnedPoints = 10
+        focus.createdAt = Date()
+        focus.updatedAt = Date()
+
+        for i in 0..<2 {
+            let breakSession = FocusSession(context: context)
+            breakSession.id = UUID()
+            breakSession.startTime = Date().addingTimeInterval(TimeInterval(-3600 + i * 60))
+            breakSession.endTime = Date()
+            breakSession.plannedDuration = 300
+            breakSession.actualDuration = 300
+            breakSession.phase = FocusPhase.shortBreak.rawValue
+            breakSession.roundIndex = 1
+            breakSession.status = SessionStatus.completed.rawValue
+            breakSession.earnedPoints = 0
+            breakSession.createdAt = Date()
+            breakSession.updatedAt = Date()
+        }
+        try? context.save()
+
+        // When
+        achievementService.checkAndUnlockAchievements()
+
+        // Then：1 个专注完成 → first_pomodoro 解锁；pomodoros_10 不解锁
+        let allAchs = achievementService.fetchAllAchievements()
+        let firstPomodoro = allAchs.first { $0.identifier == "first_pomodoro" }
+        let pomodoros10 = allAchs.first { $0.identifier == "pomodoros_10" }
+        XCTAssertTrue(firstPomodoro?.isUnlocked ?? false, "1 个专注完成应解锁 '初次专注'")
+        XCTAssertFalse(pomodoros10?.isUnlocked ?? true, "休息完成不计入番茄数，pomodoros_10 不应解锁")
     }
 }

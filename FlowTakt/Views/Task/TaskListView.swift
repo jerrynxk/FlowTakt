@@ -8,14 +8,20 @@ struct TaskListView: View {
 
     @State private var selectedTab: TaskTab = .active
     @State private var selectedPriority: Int16? = nil
+    @State private var archiveSearch: String = ""
+    /// 列表排序方式（组内排序；分组仍按日期）
+    @State private var sortOption: TaskSortOption = .dueDate
+    @EnvironmentObject var appDependency: AppDependency
     enum TaskTab: CaseIterable {
         case active
         case completed
+        case archived
 
         var displayName: String {
             switch self {
             case .active:    return L10n.shared.已计划
             case .completed: return L10n.shared.已完成
+            case .archived:  return L10n.shared.归档
             }
         }
     }
@@ -26,8 +32,9 @@ struct TaskListView: View {
                 // 分段控制器
                 segmentedControl
 
-                // 筛选栏
+                // 筛选栏 + 排序
                 TaskFilterBar(selectedPriority: $selectedPriority)
+                sortBar
 
                 // 任务列表
                 taskList
@@ -54,6 +61,13 @@ struct TaskListView: View {
                 TaskDetailView(task: task)
                     .environmentObject(taskViewModel)
             }
+            .searchable(text: $archiveSearch, prompt: L10n.shared.搜索归档任务)
+            .onReceive(appDependency.$pendingTaskTab) { pending in
+                if let pending, pending == "archived" {
+                    selectedTab = .archived
+                    appDependency.pendingTaskTab = nil
+                }
+            }
         }
     }
 
@@ -68,6 +82,45 @@ struct TaskListView: View {
         .pickerStyle(.segmented)
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
+    }
+
+    // MARK: - Sort Bar
+
+    private var sortBar: some View {
+        HStack {
+            Text(L10n.shared.排序)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Menu {
+                ForEach(TaskSortOption.allCases) { option in
+                    Button {
+                        sortOption = option
+                    } label: {
+                        if sortOption == option {
+                            Label(option.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(option.displayName)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.up.arrow.down")
+                        .font(.caption)
+                    Text(sortOption.displayName)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                }
+                .foregroundColor(.focusRed)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Color.focusRed.opacity(0.1)))
+            }
+            .accessibilityLabel(L10n.shared.排序)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 2)
     }
 
     // MARK: - Task List
@@ -85,14 +138,25 @@ struct TaskListView: View {
                 ForEach(grouped.keys.sorted(by: >), id: \.self) { dateKey in
                     if let tasksInSection = grouped[dateKey] {
                         Section {
-                            ForEach(tasksInSection) { task in
+                            // 组内按排序选项排列（默认截止日期）
+                            ForEach(sort(tasksInSection)) { task in
                                 NavigationLink(value: task) {
                                     TaskRowView(task: task)
                                 }
                                 .buttonStyle(.plain)
-                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    leadingSwipeAction(for: task)
-                                }
+                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                    if task.status != TaskStatus.archived.rawValue {
+                        Button {
+                            withAnimation {
+                                taskViewModel.archiveTask(task)
+                            }
+                        } label: {
+                            Label(L10n.shared.归档, systemImage: "archivebox")
+                        }
+                        .tint(.orange)
+                    }
+                    leadingSwipeAction(for: task)
+                }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     trailingSwipeAction(for: task)
                                 }
@@ -134,12 +198,23 @@ struct TaskListView: View {
             source = taskViewModel.activeTasks
         case .completed:
             source = taskViewModel.completedTasks
+        case .archived:
+            source = taskViewModel.archivedTasks
         }
 
-        if let priority = selectedPriority {
-            return source.filter { $0.priority == priority }
+        var result = source
+        if selectedTab == .archived, !archiveSearch.isEmpty {
+            result = result.filter { $0.title.localizedCaseInsensitiveContains(archiveSearch) }
         }
-        return source
+        if let priority = selectedPriority {
+            result = result.filter { $0.priority == priority }
+        }
+        return result
+    }
+
+    /// 按排序选项对任务排序（经 TaskViewModel 静态方法，逻辑可单测）
+    private func sort(_ tasks: [Task]) -> [Task] {
+        TaskViewModel.sortTasks(tasks, by: sortOption)
     }
 
     // MARK: - Grouping
@@ -154,6 +229,8 @@ struct TaskListView: View {
                 key = task.dueDate?.startOfDay ?? Date.distantPast
             case .completed:
                 key = task.completedAt?.startOfDay ?? Date.distantPast
+            case .archived:
+                key = task.updatedAt.startOfDay
             }
             var section = grouped[key] ?? []
             section.append(task)
@@ -167,7 +244,16 @@ struct TaskListView: View {
 
     @ViewBuilder
     private func leadingSwipeAction(for task: Task) -> some View {
-        if task.isCompleted {
+        if task.status == TaskStatus.archived.rawValue {
+            Button {
+                withAnimation {
+                    taskViewModel.reactivateTask(task)
+                }
+            } label: {
+                Label(L10n.shared.恢复, systemImage: "arrow.uturn.backward")
+            }
+            .tint(.blue)
+        } else if task.isCompleted {
             Button {
                 withAnimation {
                     taskViewModel.reactivateTask(task)
@@ -244,6 +330,8 @@ struct TaskListView: View {
             return "checklist"
         case .completed:
             return "checkmark.circle"
+        case .archived:
+            return "archivebox"
         }
     }
 
@@ -253,6 +341,8 @@ struct TaskListView: View {
             return L10n.shared.noTasks
         case .completed:
             return L10n.shared.noCompletedTasks
+        case .archived:
+            return L10n.shared.暂无归档任务
         }
     }
 
@@ -262,6 +352,8 @@ struct TaskListView: View {
             return L10n.shared.createFirstTask
         case .completed:
             return L10n.shared.completedWillShowHere
+        case .archived:
+            return L10n.shared.归档任务为空说明
         }
     }
 }

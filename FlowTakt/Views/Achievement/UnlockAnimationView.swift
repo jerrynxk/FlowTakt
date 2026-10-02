@@ -8,6 +8,8 @@ struct UnlockAnimationView: View {
     let onDismiss: () -> Void
 
     @EnvironmentObject var l10n: L10n
+    // 无障碍修复（2026-08-12）：尊重「减少动态效果」设置，动画降级为直接显示
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var showContent = false
     @State private var starBurst = false
@@ -32,6 +34,9 @@ struct UnlockAnimationView: View {
             mainContent
         }
         .onAppear(perform: startAnimation)
+        // 无障碍：动画为短暂视觉庆祝，避免 VoiceOver 逐元素朗读；成就信息由触发方（成就弹窗）另行播报
+        .accessibilityHidden(true)
+        .accessibilityElement(children: .ignore)
     }
 
     // MARK: - 主内容
@@ -106,6 +111,12 @@ struct UnlockAnimationView: View {
     // MARK: - 动画编排
 
     private func startAnimation() {
+        // 减少动态效果：跳过动画直接显示最终状态（无缩放/星星爆发/淡入过渡）
+        guard !reduceMotion else {
+            showContent = true
+            scaleUp = true
+            return
+        }
         withAnimation(.easeOut(duration: 0.25)) {
             showContent = true
         }

@@ -18,6 +18,7 @@
         <attribute name="earnedPoints" optional="NO" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="endTime" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="interruptionReason" optional="YES" attributeType="String"/>
         <attribute name="phase" optional="NO" attributeType="String" defaultValueString="focus"/>
         <attribute name="plannedDuration" optional="NO" attributeType="Double" defaultValueString="1500" usesScalarValueType="YES"/>
         <attribute name="roundIndex" optional="NO" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
@@ -47,9 +48,10 @@
         <attribute name="date" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="note" optional="YES" attributeType="String"/>
-        <relationship name="habit" optional="NO" maxCount="1" deletionRule="Nullify" destinationEntity="Habit" inverseName="records" inverseEntity="Habit"/>
+        <relationship name="habit" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Habit" inverseName="records" inverseEntity="Habit"/>
     </entity>
     <entity name="ScheduleItem" representedClassName="ScheduleItem" syncable="YES">
+        <attribute name="category" optional="NO" attributeType="String" defaultValueString="event"/>
         <attribute name="colorHex" optional="YES" attributeType="String"/>
         <attribute name="createdAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="endDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
@@ -57,6 +59,9 @@
         <attribute name="isAllDay" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="location" optional="YES" attributeType="String"/>
         <attribute name="notes" optional="YES" attributeType="String"/>
+        <attribute name="reminderEnabled" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="reminderLeadMinutes" optional="NO" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="repeatRule" optional="YES" attributeType="String"/>
         <attribute name="startDate" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="title" optional="NO" attributeType="String"/>
         <attribute name="updatedAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>

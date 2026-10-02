@@ -17,6 +17,7 @@ protocol TimeRecordServiceProtocol {
 
 // MARK: - 时间记录服务实现
 
+@MainActor
 final class TimeRecordService: TimeRecordServiceProtocol {
     private let persistenceController: PersistenceController
 

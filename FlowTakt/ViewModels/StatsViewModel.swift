@@ -19,11 +19,8 @@ final class StatsViewModel: ObservableObject {
 
     private let focusService: FocusServiceProtocol
     private let taskService: TaskServiceProtocol
+    // 保留注入的 persistenceController 以兼容既有构造签名（统计查询一律走 focusService）
     private let persistenceController: PersistenceController
-
-    private var viewContext: NSManagedObjectContext {
-        persistenceController.viewContext
-    }
 
     // MARK: - Published Properties
 
@@ -41,6 +38,25 @@ final class StatsViewModel: ObservableObject {
     @Published var todayDuration: TimeInterval = 0
     /// 完成率（今日已完成会话 / 今日总会话）
     @Published var completionRate: Double = 0
+    /// 年热力图：过去一年内「日期 → 当日完成番茄数」（A5）
+    @Published var yearlyCounts: [Date: Int] = [:]
+    /// 年热力图：过去一年内有完成记录的天数
+    @Published var yearlyTotalDays: Int = 0
+
+    // MARK: - 中断洞察（计算属性，由 todaySessions 派生）
+
+    /// 今日中断（放弃）的会话数
+    var todayInterruptedCount: Int {
+        todaySessions.filter { $0.status == SessionStatus.abandoned.rawValue }.count
+    }
+
+    /// 今日最近一次中断原因（无则 nil）
+    var lastInterruptionReason: String? {
+        todaySessions
+            .filter { $0.status == SessionStatus.abandoned.rawValue }
+            .sorted { $0.updatedAt > $1.updatedAt }
+            .first?.interruptionReason
+    }
 
     // MARK: - Private
 
@@ -59,9 +75,10 @@ final class StatsViewModel: ObservableObject {
         // 监听 CoreData 上下文变化，自动刷新
         NotificationCenter.default.publisher(
             for: .NSManagedObjectContextObjectsDidChange,
-            object: viewContext
+            object: persistenceController.viewContext
         )
         .receive(on: DispatchQueue.main)
+        .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
         .sink { [weak self] _ in
             self?.refresh()
         }
@@ -113,7 +130,9 @@ final class StatsViewModel: ObservableObject {
         todaySessions = focusService.fetchTodaysSessions()
         fetchWeeklyData()
         fetchMonthlyData()
-        computeTotals()
+        // 单次全量拉取已完成会话，computeTotals / computeStreak 共用，避免重复全表扫描
+        let allCompleted = fetchAllCompletedSessions()
+        computeTotals(allCompleted: allCompleted)
     }
 
     /// 获取本周每日数据（近 7 天）
@@ -122,18 +141,17 @@ final class StatsViewModel: ObservableObject {
         let today = Date()
         var dailyStats: [DailyStats] = []
 
-        // 获取最近 7 天所有已完成的会话
-        let sevenDaysAgo = calendar.date(byAdding: .day, value: -6, to: today.startOfDay)!
+        // 获取最近 7 天所有已完成的会话（审查 #13：guard 替代强制解包）
+        guard let sevenDaysAgo = calendar.date(byAdding: .day, value: -6, to: today.startOfDay) else { return }
         let sessions = fetchCompletedSessions(from: sevenDaysAgo, to: today.endOfDay)
+        // 按天分组，将 O(天数 × 会话) 降为 O(会话)
+        let grouped = Dictionary(grouping: sessions) { calendar.startOfDay(for: $0.startTime) }
 
         for dayOffset in (0..<7).reversed() {
             guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: today.startOfDay) else {
                 continue
             }
-            let dayEnd = calendar.date(byAdding: .day, value: 1, to: date)!.addingTimeInterval(-1)
-            let daySessions = sessions.filter { session in
-                session.startTime >= date && session.startTime <= dayEnd
-            }
+            let daySessions = grouped[date] ?? []
             let completedCount = daySessions.filter { $0.isCompleted }.count
             let totalDuration = daySessions.reduce(0) { $0 + $1.actualDuration }
 
@@ -160,19 +178,21 @@ final class StatsViewModel: ObservableObject {
         guard let range = calendar.range(of: .day, in: .month, for: today) else { return }
 
         let sessions = fetchCompletedSessions(from: monthStart, to: monthEnd)
+        // 按天分组，将 O(天数 × 会话) 降为 O(会话)
+        let grouped = Dictionary(grouping: sessions) { calendar.startOfDay(for: $0.startTime) }
         var dailyStats: [DailyStats] = []
 
-        for day in 1...range.count {
+        // 崩溃修复（2026-10-02）：`ClosedRange` 要求 lower <= upper，
+        // 若 range.count 为 0 则 `1...0` 触发 Fatal error（区间构造 trap）。
+        // max(1, ...) 兜底，公历 range 恒为 28...31，此处为纯防御。
+        for day in 1...max(1, range.count) {
             guard let date = calendar.date(from: DateComponents(
                 year: components.year,
                 month: components.month,
                 day: day
             )) else { continue }
 
-            let dayEnd = calendar.date(byAdding: .day, value: 1, to: date)!.addingTimeInterval(-1)
-            let daySessions = sessions.filter { session in
-                session.startTime >= date && session.startTime <= dayEnd
-            }
+            let daySessions = grouped[date] ?? []
             let completedCount = daySessions.filter { $0.isCompleted }.count
             let totalDuration = daySessions.reduce(0) { $0 + $1.actualDuration }
 
@@ -188,74 +208,76 @@ final class StatsViewModel: ObservableObject {
 
     // MARK: - Private Methods
 
-    private func computeTotals() {
-        // 计算今日总时长
-        todayDuration = todaySessions.reduce(0) { $0 + $1.actualDuration }
+    private func computeTotals(allCompleted: [FocusSession]) {
+        // 计算今日总时长（仅统计已完成会话，interrupted/abandoned 不计入）
+        todayDuration = todaySessions.filter { $0.isCompleted }.reduce(0) { $0 + $1.actualDuration }
 
         // 计算今日完成率
         let totalCount = todaySessions.count
         let completedCount = todaySessions.filter { $0.isCompleted }.count
         completionRate = totalCount > 0 ? Double(completedCount) / Double(totalCount) : 0
 
-        // 计算累计完成的番茄钟数
-        totalCompletedPomodoros = fetchAllCompletedSessions().count
+        // 计算累计完成的番茄钟数（复用 refresh() 已拉取的全量结果，避免重复全表扫描）
+        totalCompletedPomodoros = allCompleted.count
 
-        // 计算当前连续天数
-        currentStreak = computeStreak()
+        // 计算当前连续天数（复用同一次全量结果）
+        currentStreak = computeStreak(allCompleted: allCompleted)
+
+        // 派生年热力图（复用同一次全量结果，避免重复扫描）
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: Date())
+        let oneYearAgo = calendar.date(byAdding: .year, value: -1, to: todayStart) ?? todayStart
+        var yearMap: [Date: Int] = [:]
+        for session in allCompleted {
+            let day = calendar.startOfDay(for: session.startTime)
+            if day >= oneYearAgo {
+                yearMap[day, default: 0] += 1
+            }
+        }
+        yearlyCounts = yearMap
+        yearlyTotalDays = yearMap.count
+
+        // 写入今日专注摘要到 App Group，供锁屏 Widget「今日专注」读取
+        let todayCompleted = todaySessions.filter { $0.isCompleted }.count
+        let todayMinutes = Int(todayDuration / 60)
+        WidgetDataStore.writeFocusSummary(WidgetDataStore.FocusSummary(
+            completedPomodoros: todayCompleted,
+            totalMinutes: todayMinutes,
+            updatedAt: Date()
+        ))
     }
 
-    /// 获取指定日期范围内的已完成会话
+    /// 获取指定日期范围内的已完成会话（经 FocusService，遵循 VM → Service 架构约定）
     private func fetchCompletedSessions(from startDate: Date, to endDate: Date) -> [FocusSession] {
-        let request = FocusSession.fetchRequest()
-        request.predicate = NSPredicate(
-            format: "startTime >= %@ AND startTime <= %@ AND status == %@",
-            startDate as NSDate,
-            endDate as NSDate,
-            SessionStatus.completed.rawValue
-        )
-        request.sortDescriptors = [NSSortDescriptor(keyPath: \FocusSession.startTime, ascending: true)]
-        do {
-            return try viewContext.fetch(request)
-        } catch {
-            print("获取会话数据失败：\(error.localizedDescription)")
-            return []
-        }
+        focusService.fetchCompletedSessions(from: startDate, to: endDate)
     }
 
-    /// 获取所有已完成的会话
+    /// 获取所有已完成的会话（经 FocusService）
     private func fetchAllCompletedSessions() -> [FocusSession] {
-        let request = FocusSession.fetchRequest()
-        request.predicate = NSPredicate(format: "status == %@", SessionStatus.completed.rawValue)
-        request.sortDescriptors = [NSSortDescriptor(keyPath: \FocusSession.startTime, ascending: false)]
-        do {
-            return try viewContext.fetch(request)
-        } catch {
-            print("获取已完成会话失败：\(error.localizedDescription)")
-            return []
-        }
+        focusService.fetchAllCompletedSessions()
     }
 
     /// 计算连续天数（从今天开始往前数连续有完成会话的天数）
-    private func computeStreak() -> Int {
-        let sessions = fetchAllCompletedSessions()
-        guard !sessions.isEmpty else { return 0 }
+    /// Optimized: O(n+m) instead of O(n×m) by using a Set of completed dates
+    private func computeStreak(allCompleted: [FocusSession]) -> Int {
+        guard !allCompleted.isEmpty else { return 0 }
 
         let calendar = Calendar.current
+        let completedDates = Set(allCompleted.map { calendar.startOfDay(for: $0.startTime) })
+
         var streak = 0
         var currentDate = Date().startOfDay
 
         while streak < 10000 {
-            let sessionsOnDate = sessions.filter {
-                calendar.isDate($0.startTime, inSameDayAs: currentDate)
-            }
-            if sessionsOnDate.isEmpty {
+            if completedDates.contains(currentDate) {
+                streak += 1
+                guard let previousDay = calendar.date(byAdding: .day, value: -1, to: currentDate) else {
+                    break
+                }
+                currentDate = previousDay
+            } else {
                 break
             }
-            streak += 1
-            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: currentDate) else {
-                break
-            }
-            currentDate = previousDay
         }
 
         return streak

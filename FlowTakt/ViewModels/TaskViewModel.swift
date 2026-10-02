@@ -2,6 +2,24 @@ import Foundation
 import Combine
 import CoreData
 
+// MARK: - 任务排序选项（A3）
+
+enum TaskSortOption: String, CaseIterable, Identifiable {
+    case dueDate
+    case priority
+    case createdAt
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .dueDate:   return L10n.shared.按截止日期
+        case .priority:  return L10n.shared.按优先级
+        case .createdAt: return L10n.shared.按创建时间
+        }
+    }
+}
+
 // MARK: - TaskViewModel
 
 final class TaskViewModel: ObservableObject {
@@ -22,6 +40,8 @@ final class TaskViewModel: ObservableObject {
     @Published var activeTasks: [Task] = []
     /// 已完成任务
     @Published var completedTasks: [Task] = []
+    /// 已归档任务（隐藏但保留，可检索/恢复）
+    @Published var archivedTasks: [Task] = []
     /// 是否显示创建任务表单
     @Published var showCreateSheet: Bool = false
     /// 正在编辑的任务（nil 表示新建）
@@ -46,6 +66,7 @@ final class TaskViewModel: ObservableObject {
             object: viewContext
         )
         .receive(on: DispatchQueue.main)
+        .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
         .sink { [weak self] _ in
             self?.loadTasks()
         }
@@ -77,6 +98,7 @@ final class TaskViewModel: ObservableObject {
         tasks = []
         activeTasks = []
         completedTasks = []
+        archivedTasks = []
         editingTask = nil
     }
 
@@ -89,11 +111,34 @@ final class TaskViewModel: ObservableObject {
 
     // MARK: - Public Methods
 
-    /// 加载所有任务并分类
+    /// 加载所有任务并分类（审查 #12：一次全量拉取后内存分组，替代 4 次全表查询）
     func loadTasks() {
         tasks = taskService.fetchAllTasks()
-        activeTasks = taskService.fetchActiveTasks()
-        completedTasks = taskService.fetchCompletedTasks()
+        activeTasks = tasks.filter { $0.status == TaskStatus.active.rawValue }
+        completedTasks = tasks.filter { $0.status == TaskStatus.completed.rawValue }
+        archivedTasks = tasks.filter { $0.status == TaskStatus.archived.rawValue }
+    }
+
+    /// 按排序选项对任务排序（稳定排序，无截止日期的排最后）
+    static func sortTasks(_ tasks: [Task], by option: TaskSortOption) -> [Task] {
+        switch option {
+        case .dueDate:
+            // 审查 #19：次级按创建时间降序保证确定性（避免同截止日期任务顺序抖动）
+            return tasks.sorted { lhs, rhs in
+                let l = lhs.dueDate ?? .distantFuture
+                let r = rhs.dueDate ?? .distantFuture
+                if l != r { return l < r }
+                return lhs.createdAt > rhs.createdAt
+            }
+        case .priority:
+            // 审查修复（2026-08-12）：优先级相同时按创建时间降序，避免同级任务顺序抖动
+            return tasks.sorted { lhs, rhs in
+                if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
+                return lhs.createdAt > rhs.createdAt
+            }
+        case .createdAt:
+            return tasks.sorted { $0.createdAt > $1.createdAt }
+        }
     }
 
     /// 创建新任务
@@ -119,17 +164,23 @@ final class TaskViewModel: ObservableObject {
         showCreateSheet = false
     }
 
-    /// 刷新任务（重新加载列表）
-    /// - Parameter task: 要刷新的任务
-    func refreshTask(_ task: Task) {
+    /// 更新任务（通过 Service 层，避免 View 直接修改 NSManagedObject）
+    /// - Parameters:
+    ///   - task: 要更新的任务
+    ///   - title: 新标题
+    ///   - notes: 新备注
+    ///   - estimatedPomodoros: 预计番茄数
+    ///   - priority: 优先级
+    ///   - dueDate: 截止日期
+    func updateTask(_ task: Task, title: String, notes: String?, estimatedPomodoros: Int16, priority: Int16, dueDate: Date?) {
         taskService.updateTask(
             task,
-            title: nil,
-            notes: nil,
-            estimatedPomodoros: nil,
-            priority: nil,
+            title: title,
+            notes: notes,
+            estimatedPomodoros: estimatedPomodoros,
+            priority: priority,
             status: nil,
-            dueDate: nil
+            dueDate: dueDate
         )
         loadTasks()
     }
@@ -137,6 +188,8 @@ final class TaskViewModel: ObservableObject {
     /// 删除任务
     /// - Parameter task: 要删除的任务
     func deleteTask(_ task: Task) {
+        // 触觉反馈：删除为破坏性操作，用中度反馈提示
+        HapticManager.shared.mediumImpact()
         taskService.deleteTask(task)
         loadTasks()
     }
@@ -144,6 +197,8 @@ final class TaskViewModel: ObservableObject {
     /// 标记任务为已完成
     /// - Parameter task: 要完成的任务
     func completeTask(_ task: Task) {
+        // 触觉反馈：完成（轻量选择反馈）
+        HapticManager.shared.selectionFeedback()
         taskService.updateTask(
             task,
             title: nil,
@@ -159,6 +214,8 @@ final class TaskViewModel: ObservableObject {
     /// 重新激活已完成/已归档的任务
     /// - Parameter task: 要激活的任务
     func reactivateTask(_ task: Task) {
+        // 触觉反馈：恢复
+        HapticManager.shared.selectionFeedback()
         taskService.updateTask(
             task,
             title: nil,
@@ -166,6 +223,23 @@ final class TaskViewModel: ObservableObject {
             estimatedPomodoros: nil,
             priority: nil,
             status: TaskStatus.active.rawValue,
+            dueDate: nil
+        )
+        loadTasks()
+    }
+
+    /// 归档任务（隐藏但保留，可从归档分段恢复）
+    /// - Parameter task: 要归档的任务
+    func archiveTask(_ task: Task) {
+        // 触觉反馈：归档
+        HapticManager.shared.selectionFeedback()
+        taskService.updateTask(
+            task,
+            title: nil,
+            notes: nil,
+            estimatedPomodoros: nil,
+            priority: nil,
+            status: TaskStatus.archived.rawValue,
             dueDate: nil
         )
         loadTasks()

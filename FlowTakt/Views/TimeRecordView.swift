@@ -6,6 +6,8 @@ struct TimeRecordView: View {
     @EnvironmentObject var timeRecordViewModel: TimeRecordViewModel
     @EnvironmentObject var taskViewModel: TaskViewModel
     @EnvironmentObject var l10n: L10n
+    // 无障碍修复（2026-08-12）：尊重「减少动态效果」
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var selectedTask: Task?
     @State private var elapsedTime: TimeInterval = 0
@@ -70,12 +72,15 @@ struct TimeRecordView: View {
             }
             .onChange(of: timeRecordViewModel.isRecording) { isRecording in
                 if isRecording {
-                    elapsedTimer?.invalidate()
+                    // 防止重复创建 Timer
+                    guard elapsedTimer == nil else { return }
+                    // 录制开始时 start 已固定，先取出值（避免在主线程隔离属性被 Sendable 闭包捕获）
+                    let start = timeRecordViewModel.currentRecord?.startTime ?? Date()
                     elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-                        self.elapsedTime = Date().timeIntervalSince(timeRecordViewModel.currentRecord?.startTime ?? Date())
+                        self.elapsedTime = Date().timeIntervalSince(start)
                     }
                     // 立即显示一次
-                    self.elapsedTime = Date().timeIntervalSince(timeRecordViewModel.currentRecord?.startTime ?? Date())
+                    self.elapsedTime = Date().timeIntervalSince(start)
                 } else {
                     elapsedTimer?.invalidate()
                     elapsedTimer = nil
@@ -95,6 +100,8 @@ struct TimeRecordView: View {
                     .font(.system(size: 52, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
                     .padding(.top, 12)
+                    // 无障碍：计时大数字限制动态字体放大（避免大字号模式溢出），值由下方合并元素朗读
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
 
                 Text(L10n.shared.今日总计)
                     .font(.subheadline)
@@ -102,6 +109,9 @@ struct TimeRecordView: View {
                     .padding(.bottom, 8)
             }
             .frame(maxWidth: .infinity)
+            // 无障碍：合并「今日总计 X」朗读
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(L10n.shared.今日总计) \(formattedTotal)")
             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             .listRowBackground(Color.clear)
         }
@@ -140,16 +150,18 @@ struct TimeRecordView: View {
             // 任务选择器
             Picker(L10n.shared.关联任务, selection: $selectedTask) {
                 Text(L10n.shared.无任务).tag(nil as Task?)
-                if availableTasks.isEmpty {
-                    Text(L10n.shared.无可用任务).tag(nil as Task?)
-                        .foregroundColor(.secondary)
-                } else {
-                    ForEach(availableTasks) { task in
-                        Text(task.title).tag(task as Task?)
-                    }
+                ForEach(availableTasks) { task in
+                    Text(task.title).tag(task as Task?)
                 }
             }
             .pickerStyle(.menu)
+
+            // 无可用任务时提示
+            if availableTasks.isEmpty {
+                Text(L10n.shared.无可用任务)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
 
             // 开始计时按钮
             Button {
@@ -175,6 +187,8 @@ struct TimeRecordView: View {
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
+            .accessibilityIdentifier("startTimeRecordButton")
+            .accessibilityLabel(L10n.shared.开始计时)
         }
     }
 
@@ -203,10 +217,15 @@ struct TimeRecordView: View {
                     .scaleEffect(isPulsing ? 1.4 : 0.8)
                     .opacity(isPulsing ? 0.5 : 1.0)
                     .onAppear {
-                        withAnimation(
-                            .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
-                        ) {
+                        // 无障碍修复：减少动态效果时静态显示，不启动 repeatForever 脉冲
+                        if reduceMotion {
                             isPulsing = true
+                        } else {
+                            withAnimation(
+                                .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
+                            ) {
+                                isPulsing = true
+                            }
                         }
                     }
 
@@ -243,6 +262,8 @@ struct TimeRecordView: View {
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
+            .accessibilityIdentifier("stopTimeRecordButton")
+            .accessibilityLabel(L10n.shared.停止)
             .transition(.scale.combined(with: .opacity))
         }
     }
@@ -291,10 +312,18 @@ struct TimeRecordView: View {
 
     // MARK: - Helpers
 
+    /// 删除指定索引集合的记录。
+    ///
+    /// 崩溃修复（2026-10-02）：`recordsForDate` 是**计算属性**，每次访问都会基于最新的
+    /// `timeRecordViewModel.records` 重新 filter + sort。而 `deleteRecord` 内部会调
+    /// `loadRecords()` 把 `records` 整体替换为新数组，导致同一轮删除中后续索引对应的
+    /// 记录已被移除 → `recordsForDate[index]` 越界，触发 `Fatal error: Index out of range`。
+    ///
+    /// 修复：进入循环前先取一次快照，并防御越界。
     private func deleteRecords(at indexSet: IndexSet) {
-        for index in indexSet {
-            let record = recordsForDate[index]
-            timeRecordViewModel.deleteRecord(record)
+        let snapshot = recordsForDate
+        for index in indexSet where index < snapshot.count {
+            timeRecordViewModel.deleteRecord(snapshot[index])
         }
     }
 }

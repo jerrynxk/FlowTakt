@@ -35,27 +35,27 @@ struct StatsOverviewView: View {
                 AchievementListView()
             }
         }
+        // v1.3.4p：iPad 上 NavigationSplitView detail 内的 frame(maxWidth:) 失效，
+        // 统计/列表在 iPad 保持自然宽度（参考邮件/备忘录 iPad 设计）
     }
 }
 
 #Preview {
     let l10nInstance = L10n.shared
-    let notificationService1 = NotificationService()
-    let notificationService2 = NotificationService()
-    let focusService1 = FocusService(persistenceController: .shared, notificationService: notificationService1)
-    let focusService2 = FocusService(persistenceController: .shared, notificationService: notificationService2)
+    let notificationService = NotificationService()
+    let focusService = FocusService(persistenceController: .shared, notificationService: notificationService)
     let statsVM = StatsViewModel(
-        focusService: focusService1,
+        focusService: focusService,
         taskService: TaskService(persistenceController: .shared),
         persistenceController: .shared
     )
     let achievementVM = AchievementViewModel(
         achievementService: AchievementService(
-            persistenceController: .shared,
-            focusService: focusService2
-        )
+            persistenceController: .shared
+        ),
+        persistenceController: .shared
     )
-    return StatsOverviewView()
+    StatsOverviewView()
         .environmentObject(l10nInstance)
         .environmentObject(statsVM)
         .environmentObject(achievementVM)

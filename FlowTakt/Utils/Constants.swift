@@ -99,10 +99,10 @@ struct AppConstants {
         ("points_1000", "积分大师", "累计获得 1000 积分", "1000.circle.fill", .total, 1000),
     ]
 
-    /// 应用组 ID（用于共享 UserDefaults 和 CoreData）
-    static let appGroupIdentifier = "group.com.flowtakt"
     /// CloudKit 容器标识符
     static let cloudKitContainerIdentifier = "iCloud.com.flowtakt"
+    /// 在线隐私政策 URL（托管页，供审核备注与 App 内跳转）
+    static let privacyPolicyURL = "https://9a35c2340fb1411db84664401f93dc55.sh2.agentos-app.net/privacy.html"
 
     /// 默认专注时长选项（分钟）
     static let focusDurationOptions: [TimeInterval] = [15, 25, 30, 45, 60].map { TimeInterval($0 * 60) }

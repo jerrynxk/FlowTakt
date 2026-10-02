@@ -4,8 +4,14 @@ import Foundation
 
 extension TimeInterval {
     /// 格式化为中文 "X小时X分钟" 或英文 "Xh Xm"
+    /// 审查修复（2026-08-12）：<60 秒不再显示"0分钟"，按 1 分钟兜底
     var formattedDuration: String {
         let totalMinutes = Int(self) / 60
+
+        // 非零但不足 1 分钟的时长显示为 1 分钟
+        if self > 0 && totalMinutes < 1 {
+            return L10n.shared.分钟(1)
+        }
 
         if totalMinutes >= 60 {
             let hours = totalMinutes / 60
@@ -16,13 +22,5 @@ extension TimeInterval {
             return L10n.shared.小时(hours)
         }
         return L10n.shared.分钟(totalMinutes)
-    }
-
-    /// 格式化为简短时长 "XX:XX"
-    var mmssString: String {
-        let totalSeconds = Int(self)
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%02d:%02d", minutes, seconds)
     }
 }

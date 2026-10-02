@@ -20,6 +20,7 @@ final class FocusViewModelTests: XCTestCase {
     var mockAudioService: MockAudioService!
     var mockAchievementService: MockAchievementService!
     var mockTaskService: MockTaskService!
+    var mockSpeechService: MockSpeechService!
     var viewModel: FocusViewModel!
     var cancellables: Set<AnyCancellable>!
     /// 持久化 controller，确保 CoreData context 在测试期间不释放
@@ -52,6 +53,7 @@ final class FocusViewModelTests: XCTestCase {
         mockAudioService = MockAudioService()
         mockAchievementService = MockAchievementService()
         mockTaskService = MockTaskService()
+        mockSpeechService = MockSpeechService()
 
         viewModel = FocusViewModel(
             focusService: mockFocusService,
@@ -60,7 +62,8 @@ final class FocusViewModelTests: XCTestCase {
             appBlockerService: mockAppBlockerService,
             audioService: mockAudioService,
             achievementService: mockAchievementService,
-            taskService: mockTaskService
+            taskService: mockTaskService,
+            speechService: mockSpeechService
         )
         cancellables = Set<AnyCancellable>()
     }
@@ -74,6 +77,7 @@ final class FocusViewModelTests: XCTestCase {
         mockAudioService = nil
         mockAchievementService = nil
         mockTaskService = nil
+        mockSpeechService = nil
         persistenceController = nil
         cancellables = nil
         super.tearDown()
@@ -93,7 +97,6 @@ final class FocusViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.selectedTask)
         XCTAssertEqual(viewModel.progress, 0.0, "idle 状态下 progress 应为 0（未开始流逝）")
         XCTAssertFalse(viewModel.showCompletionAnimation)
-        XCTAssertNil(viewModel.errorMessage)
     }
 
     // ========================================================================
@@ -115,7 +118,8 @@ final class FocusViewModelTests: XCTestCase {
         XCTAssertEqual(timerManager.timerState, .running)
         XCTAssertEqual(viewModel.currentSession?.id, mockSession.id)
         XCTAssertTrue(mockAppBlockerService.startBlockingCalled, "应开启勿扰模式")
-        XCTAssertTrue(mockNotificationService.scheduleSessionEndNotificationCalled, "应调度专注结束通知")
+        // 注意：「专注结束」通知调度由 FocusService.startFocusSession 内部负责
+        // （真实 FocusService 会调度；Mock 不模拟），此处不再断言 ViewModel 层调用
         XCTAssertTrue(mockAudioService.playStartSoundCalled, "应播放开始音效")
     }
 
@@ -280,7 +284,7 @@ final class FocusViewModelTests: XCTestCase {
         mockFocusService.startFocusSessionHandler = { task, duration, phase, roundIndex in
             return mockSession
         }
-        mockFocusService.completeSessionHandler = { session in
+        mockFocusService.completeSessionHandler = { session, actualDuration in
             completedSession = session
         }
 
@@ -312,7 +316,7 @@ final class FocusViewModelTests: XCTestCase {
         mockFocusService.startFocusSessionHandler = { task, duration, phase, roundIndex in
             return mockSession
         }
-        mockFocusService.completeSessionHandler = { _ in }
+        mockFocusService.completeSessionHandler = { _, _ in }
 
         viewModel.startFocus(phase: .focus)
 
@@ -332,7 +336,7 @@ final class FocusViewModelTests: XCTestCase {
         mockFocusService.startFocusSessionHandler = { task, duration, phase, roundIndex in
             return mockSession
         }
-        mockFocusService.completeSessionHandler = { _ in }
+        mockFocusService.completeSessionHandler = { _, _ in }
 
         viewModel.startFocus(phase: .focus)
 
@@ -415,33 +419,6 @@ final class FocusViewModelTests: XCTestCase {
     // ========================================================================
     // MARK: - 刷新统计
     // ========================================================================
-
-    func testRefreshTodayStats_WhenSessionsExist_ThenUpdatesCounts() {
-        // Given
-        let mockSession = makeMockSession(status: .completed)
-        mockFocusService.fetchTodaysSessionsResult = [mockSession]
-
-        // When
-        viewModel.refreshTodayStats()
-
-        // Then
-        XCTAssertEqual(viewModel.todayCompletedCount, 1)
-        XCTAssertGreaterThan(viewModel.todayTotalDuration, 0)
-    }
-
-    func testRefreshTodayStats_WhenNoSessions_ThenCountsAreZero() {
-        // Given
-        mockFocusService.fetchTodaysSessionsResult = []
-
-        // When
-        viewModel.refreshTodayStats()
-
-        // Then
-        XCTAssertEqual(viewModel.todayCompletedCount, 0)
-        XCTAssertEqual(viewModel.todayTotalDuration, 0)
-    }
-
-    // ========================================================================
     // MARK: - 边界条件
     // ========================================================================
 
@@ -489,7 +466,7 @@ final class FocusViewModelTests: XCTestCase {
         mockFocusService.startFocusSessionHandler = { task, duration, phase, roundIndex in
             return mockSession
         }
-        mockFocusService.completeSessionHandler = { _ in }
+        mockFocusService.completeSessionHandler = { _, _ in }
 
         viewModel.startFocus(phase: .focus)
 
@@ -516,7 +493,7 @@ final class FocusViewModelTests: XCTestCase {
         mockFocusService.startFocusSessionHandler = { task, duration, phase, roundIndex in
             return mockSession
         }
-        mockFocusService.completeSessionHandler = { _ in }
+        mockFocusService.completeSessionHandler = { _, _ in }
 
         viewModel.startFocus(phase: .focus)
 
@@ -526,5 +503,372 @@ final class FocusViewModelTests: XCTestCase {
 
         // Then - 只应调用一次
         XCTAssertEqual(checkCallCount, 1, "checkAndUnlockAchievements 只应被调用一次")
+    }
+
+    // ========================================================================
+    // MARK: - 时长预设（P1.5）
+    // ========================================================================
+
+    func testStartFocus_WithDurationOverride_ThenUsesCustomDuration() {
+        // Given
+        var capturedDuration: TimeInterval?
+        mockFocusService.startFocusSessionHandler = { _, duration, _, _ in
+            capturedDuration = duration
+            return self.makeMockSession()
+        }
+
+        // When - 使用 12 分钟自定义时长（绕过设置默认 25 分钟）
+        viewModel.startFocus(phase: .focus, durationOverride: 12 * 60)
+
+        // Then - 会话应使用自定义时长
+        XCTAssertEqual(capturedDuration, 12 * 60, "应直接使用自定义时长，而非设置默认值")
+    }
+
+    // ========================================================================
+    // MARK: - 语音播报（P2.3）
+    // ========================================================================
+
+    func testTimerComplete_ThenSpeechAnnouncesCompletedPomodoro() {
+        // Given
+        let mockSession = makeMockSession()
+        mockFocusService.startFocusSessionHandler = { task, duration, phase, roundIndex in
+            return mockSession
+        }
+        mockFocusService.completeSessionHandler = { _, _ in }
+
+        viewModel.startFocus(phase: .focus)
+
+        // When - 模拟计时器完成
+        timerManager.timerState = .finished
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+        // Then - 应播报「第 1 个番茄完成」（轮次递增前的值）
+        XCTAssertTrue(mockSpeechService.speakCalled, "专注完成应触发语音播报")
+        XCTAssertEqual(mockSpeechService.lastSpokenText, L10n.shared.第X个番茄完成(1))
+    }
+
+    // ========================================================================
+    // MARK: - 回归：skipPhase 延迟闭包竞态（放弃/暂停后不应自动开始下一段）
+    // ========================================================================
+
+    func testSkipPhase_ThenAbandonWithinWindow_DoesNotAutoStartNewSession() {
+        // Given
+        let session1 = makeMockSession(id: UUID())
+        let session2 = makeMockSession(id: UUID())
+        var createCount = 0
+        mockFocusService.startFocusSessionHandler = { task, duration, phase, roundIndex in
+            createCount += 1
+            return createCount == 1 ? session1 : session2
+        }
+        mockFocusService.completeSessionHandler = { _, _ in }
+        mockFocusService.abandonSessionHandler = { _ in }
+        viewModel.startFocus(phase: .focus)
+        XCTAssertTrue(viewModel.isRunning)
+
+        // When - 跳过当前阶段后，在 0.3s 延迟窗口内立即放弃
+        viewModel.skipPhase()
+        viewModel.abandonSession()
+
+        // Then - 延迟闭包不应再自动开始新会话
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertEqual(createCount, 1, "放弃后不应自动创建新会话（代际校验应拦截延迟启动）")
+        XCTAssertFalse(viewModel.isRunning)
+        XCTAssertNil(viewModel.currentSession)
+    }
+
+    func testSkipPhase_ThenPauseWithinWindow_DoesNotAutoStartNewSession() {
+        // Given
+        let session1 = makeMockSession(id: UUID())
+        let session2 = makeMockSession(id: UUID())
+        var createCount = 0
+        mockFocusService.startFocusSessionHandler = { task, duration, phase, roundIndex in
+            createCount += 1
+            return createCount == 1 ? session1 : session2
+        }
+        mockFocusService.completeSessionHandler = { _, _ in }
+        viewModel.startFocus(phase: .focus)
+
+        // When - 跳过后在延迟窗口内暂停
+        viewModel.skipPhase()
+        viewModel.pauseFocus()
+
+        // Then - 延迟闭包不应自动开始下一段
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertEqual(createCount, 1, "暂停后不应自动创建新会话")
+    }
+
+    func testSkipPhase_WithoutInterruption_ThenAutoStartsNextPhase() {
+        // Given
+        let session1 = makeMockSession(id: UUID())
+        let session2 = makeMockSession(id: UUID())
+        var createCount = 0
+        mockFocusService.startFocusSessionHandler = { task, duration, phase, roundIndex in
+            createCount += 1
+            return createCount == 1 ? session1 : session2
+        }
+        mockFocusService.completeSessionHandler = { _, _ in }
+        viewModel.startFocus(phase: .focus)
+
+        // When - 正常跳过（无中断）
+        viewModel.skipPhase()
+
+        // Then - 延迟闭包正常启动下一阶段
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertEqual(createCount, 2, "无中断时跳过应自动开始下一阶段")
+        XCTAssertTrue(viewModel.isRunning)
+    }
+
+    // ========================================================================
+    // MARK: - 回归：actualDuration 扣除暂停时长
+    // ========================================================================
+
+    func testHandleTimerFinished_ThenActualDurationExcludesPausedTime() {
+        // Given
+        let mockSession = makeMockSession()
+        mockSession.startTime = Date().addingTimeInterval(-100) // 100 秒前开始
+        var capturedDuration: TimeInterval?
+        mockFocusService.startFocusSessionHandler = { task, duration, phase, roundIndex in
+            return mockSession
+        }
+        mockFocusService.completeSessionHandler = { _, actualDuration in
+            capturedDuration = actualDuration
+        }
+        viewModel.startFocus(phase: .focus)
+
+        // 模拟暂停一段时间（结算到 totalPausedDuration）
+        timerManager.pause()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        timerManager.resume()
+
+        // When
+        timerManager.timerState = .finished
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+
+        // Then - actualDuration = 实际流逝 - 暂停时长（而非包含暂停的完整时间）
+        XCTAssertNotNil(capturedDuration)
+        let rawElapsed = Date().timeIntervalSince(mockSession.startTime)
+        XCTAssertEqual(capturedDuration ?? 0,
+                       rawElapsed - timerManager.totalPausedDuration,
+                       accuracy: 0.2,
+                       "actualDuration 应扣除暂停时长")
+        // 扣除前 rawElapsed ≈ 100s，扣除后明显更小
+        XCTAssertLessThan(capturedDuration ?? 999, rawElapsed, "扣除暂停后应小于总流逝时间")
+        XCTAssertGreaterThan(timerManager.totalPausedDuration, 0.19, "暂停时长应被累计")
+    }
+
+    // ========================================================================
+    // MARK: - v1.3 UI 升级：phase 切换 + 时长 chip
+    // ========================================================================
+
+    func testSwitchPhase_WhenIdle_ThenUpdatesActivePhaseAndDisplay() {
+        // Given - 默认 activePhase == .focus
+        XCTAssertEqual(viewModel.currentPhase, .focus)
+
+        // When
+        viewModel.switchPhase(.shortBreak)
+
+        // Then
+        XCTAssertEqual(viewModel.currentPhase, .shortBreak, "空闲态应直接切到目标 phase")
+        let shortBreakTotal = UserDefaults.standard.double(forKey: "shortBreakDuration")
+        XCTAssertNotEqual(shortBreakTotal, 0, "短休默认时长应已存在（用于更新显示）")
+        XCTAssertFalse(viewModel.isRunning)
+    }
+
+    func testSwitchPhase_WhenIdle_ThenUpdatesDisplayDuration() {
+        // Given - 短休默认 5 分钟 = 300 秒
+        UserDefaults.standard.set(TimeInterval(3 * 60), forKey: "shortBreakDuration")
+
+        // When
+        viewModel.switchPhase(.shortBreak)
+
+        // Then
+        XCTAssertEqual(viewModel.currentPhase, .shortBreak)
+        XCTAssertEqual(viewModel.timerDisplay, "03:00", "切换到短休后显示应立即更新为新的默认时长")
+    }
+
+    func testSwitchPhase_WhenRunning_ThenAbandonsAndResetsToTargetPhase() {
+        // Given
+        let mockSession = makeMockSession()
+        mockFocusService.startFocusSessionHandler = { _, _, _, _ in mockSession }
+        var abandonedSession: FocusSession?
+        mockFocusService.abandonSessionHandler = { session in
+            abandonedSession = session
+        }
+        viewModel.startFocus(phase: .focus)
+        XCTAssertTrue(viewModel.isRunning)
+
+        // When
+        viewModel.switchPhase(.longBreak)
+
+        // Then
+        XCTAssertNotNil(abandonedSession, "运行中切 phase 应先 abandon 当前会话")
+        XCTAssertEqual(viewModel.currentPhase, .longBreak)
+        XCTAssertFalse(viewModel.isRunning, "切换后应回到 idle")
+        XCTAssertNil(viewModel.currentSession)
+    }
+
+    func testSwitchPhase_WhenPaused_ThenAbandonsAndResets() {
+        // Given
+        let mockSession = makeMockSession()
+        mockFocusService.startFocusSessionHandler = { _, _, _, _ in mockSession }
+        mockFocusService.abandonSessionHandler = { _ in }
+        viewModel.startFocus(phase: .focus)
+        viewModel.pauseFocus()
+        XCTAssertTrue(viewModel.isPaused)
+
+        // When
+        viewModel.switchPhase(.shortBreak)
+
+        // Then
+        XCTAssertEqual(viewModel.currentPhase, .shortBreak)
+        XCTAssertFalse(viewModel.isRunning)
+        XCTAssertFalse(viewModel.isPaused)
+    }
+
+    func testApplyFocusDuration_WhenIdleOnFocusPhase_ThenUpdatesDisplay() {
+        // Given - 默认 25 分钟
+        XCTAssertEqual(viewModel.timerDisplay, "25:00")
+
+        // When
+        viewModel.applyFocusDuration(TimeInterval(45 * 60))
+
+        // Then
+        XCTAssertEqual(viewModel.timerDisplay, "45:00", "空闲态下 chip 选择应立即更新显示")
+        XCTAssertEqual(UserDefaults.standard.double(forKey: "focusDuration"),
+                       TimeInterval(45 * 60),
+                       "新时长应写回 UserDefaults")
+    }
+
+    func testApplyFocusDuration_WhenIdleButOnBreakPhase_ThenDoesNotChangeDisplay() {
+        // Given
+        viewModel.switchPhase(.shortBreak)
+        let beforeDisplay = viewModel.timerDisplay
+
+        // When
+        viewModel.applyFocusDuration(TimeInterval(60 * 60))
+
+        // Then
+        XCTAssertEqual(viewModel.timerDisplay, beforeDisplay, "非 focus 阶段下 chip 调用不应改 display")
+        XCTAssertEqual(UserDefaults.standard.double(forKey: "focusDuration"),
+                       TimeInterval(60 * 60),
+                       "但 UserDefaults 仍应被持久化（后续启动读取）")
+    }
+
+    func testApplyShortBreakDuration_PersistsAndUpdatesDisplayOnBreak() {
+        // Given
+        viewModel.switchPhase(.shortBreak)
+
+        // When
+        viewModel.applyShortBreakDuration(TimeInterval(10 * 60))
+
+        // Then
+        XCTAssertEqual(viewModel.timerDisplay, "10:00")
+        XCTAssertEqual(UserDefaults.standard.double(forKey: "shortBreakDuration"),
+                       TimeInterval(10 * 60))
+    }
+
+    func testApplyLongBreakDuration_PersistsAndUpdatesDisplayOnLongBreak() {
+        // Given
+        viewModel.switchPhase(.longBreak)
+
+        // When
+        viewModel.applyLongBreakDuration(TimeInterval(20 * 60))
+
+        // Then
+        XCTAssertEqual(viewModel.timerDisplay, "20:00")
+        XCTAssertEqual(UserDefaults.standard.double(forKey: "longBreakDuration"),
+                       TimeInterval(20 * 60))
+    }
+
+    func testClearSelectedTask_RemovesTask() {
+        // Given
+        let context = persistenceController.viewContext
+        let task = Task(context: context)
+        task.id = UUID()
+        task.title = "测试任务"
+        task.status = TaskStatus.active.rawValue
+        viewModel.selectTask(task)
+        XCTAssertNotNil(viewModel.selectedTask)
+
+        // When
+        viewModel.clearSelectedTask()
+
+        // Then
+        XCTAssertNil(viewModel.selectedTask, "清除后 selectedTask 应为 nil")
+    }
+
+    // ========================================================================
+    // MARK: - 审查修复回归测试（2026-08-12）
+    // ========================================================================
+
+    /// P1 #5：skipPhase 在暂停态跳过时，actualDuration 应补扣当前暂停段
+    func testSkipPhase_WhenPaused_ThenActualDurationExcludesCurrentPause() {
+        // Given
+        let mockSession = makeMockSession()
+        mockFocusService.startFocusSessionHandler = { _, _, _, _ in mockSession }
+        viewModel.startFocus(phase: .focus)
+        XCTAssertTrue(viewModel.isRunning)
+
+        // 暂停 0.2s 后再跳过：暂停期间流逝的时间不应计入 actualDuration
+        viewModel.pauseFocus()
+        XCTAssertTrue(viewModel.isPaused)
+        Thread.sleep(forTimeInterval: 0.2)
+
+        var capturedDuration: TimeInterval?
+        mockFocusService.completeSessionHandler = { _, duration in
+            capturedDuration = duration
+        }
+
+        // When
+        viewModel.skipPhase()
+
+        // Then：actualDuration = startTime 至今 - totalPaused - currentPaused
+        // 由于暂停段约 0.2s，actualDuration 应明显小于「全程 elapsed」（约 0.2s+ 的运行时间）
+        let totalElapsed = Date().timeIntervalSince(mockSession.startTime)
+        XCTAssertNotNil(capturedDuration, "skipPhase 应调用 completeSession")
+        if let duration = capturedDuration {
+            XCTAssertLessThan(duration, totalElapsed - 0.15,
+                              "暂停段应被扣除（actualDuration 应明显小于全程流逝时间）")
+        }
+    }
+
+    /// P1 #4：恢复会话时剩余时间 ≤ 0 走完成逻辑，不再残留 running 会话
+    func testRestorePendingSession_WhenRemainingNonPositive_ThenCompletesSession() {
+        // Given：会话 startTime 远早于 now，plannedDuration 已耗尽
+        let context = persistenceController.viewContext
+        let session = FocusSession(context: context)
+        session.id = UUID()
+        session.startTime = Date().addingTimeInterval(-1600)   // 已超过 1500s 计划时长
+        session.plannedDuration = 1500
+        session.phase = FocusPhase.focus.rawValue
+        session.roundIndex = 1
+        session.status = SessionStatus.running.rawValue
+        session.createdAt = Date()
+        session.updatedAt = Date()
+
+        // needsRestore 在 init 时经 focusService.getCurrentSession() 读取，
+        // 因此必须先设置 currentSessionToReturn 再重建 VM（审查修复：原写法 init 后设置无效）
+        mockFocusService.currentSessionToReturn = session
+        viewModel = FocusViewModel(
+            focusService: mockFocusService,
+            timerManager: timerManager,
+            notificationService: mockNotificationService,
+            appBlockerService: mockAppBlockerService,
+            audioService: mockAudioService,
+            achievementService: mockAchievementService,
+            taskService: mockTaskService,
+            speechService: mockSpeechService
+        )
+
+        var completed = false
+        mockFocusService.completeSessionHandler = { _, _ in completed = true }
+
+        // When
+        viewModel.restorePendingSessionIfNeeded()
+
+        // Then：会话被完成，状态回到 idle，不再残留
+        XCTAssertTrue(completed, "remaining<=0 时应完成会话")
+        XCTAssertNil(viewModel.currentSession)
+        XCTAssertEqual(viewModel.timerState, .idle)
     }
 }

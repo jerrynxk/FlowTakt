@@ -18,6 +18,11 @@ protocol AppBlockerServiceProtocol {
 /// Screen Time 级别的应用屏蔽需要 MDM 或 NetworkExtension 授权，
 /// 普通沙盒应用无法实现，故退而求其次激活/关闭系统勿扰模式。
 ///
+/// 【注意】macOS 勿扰模式通过 AppleScript 间接控制 `com.apple.notificationcenterui` 的
+/// UserDefaults 实现，依赖内部 plist 路径和 killall NotificationCenter 行为。
+/// 这些实现细节在 macOS 大版本更新时**极易失效**（已知曾在 macOS 12→13 变更路径），
+/// 应定期验证并在后续版本中迁移至 macOS Screen Time / FamilyControls API。
+///
 /// 在 iOS 上，系统级的专注模式屏蔽需要 FamilyControls 授权（iOS 15+），
 /// 当前作为占位实现，后续可通过 Screen Time API 扩展。
 final class AppBlockerService: AppBlockerServiceProtocol {
