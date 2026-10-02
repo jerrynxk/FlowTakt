@@ -33,17 +33,22 @@ struct FocusPhaseBadge: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             Image(systemName: phaseIcon)
-                .font(.caption)
+                .font(.caption2)
             Text(phaseText)
-                .font(.caption.weight(.semibold))
+                .font(.caption2.weight(.semibold))
         }
         .foregroundColor(phaseColor)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
-        .background(phaseColor.opacity(0.12))
-        .cornerRadius(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+        // 视觉优化（2026-10-03）：改为 Capsule 并降低底色透明度。
+        // 旧版 cornerRadius(12) + 0.12 底色在浅色圆底上略显厚重，
+        // 且与外层圆环的柔和风格不统一。
+        .background(
+            Capsule()
+                .fill(phaseColor.opacity(0.10))
+        )
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: focusViewModel.activePhase)
     }
 }
