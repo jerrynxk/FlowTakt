@@ -63,13 +63,26 @@ struct CircularTimerView: View {
                 .shadow(color: phaseColor.opacity(0.45), radius: 8)
                 .animation(.linear(duration: 0.1), value: progress)
 
-            // MARK: 中心：极淡圆底 + 徽章 + 时间
-            // 旧版用 RadialGradient(startRadius 10 / endRadius 110)，圆心颜色堆积明显；
-            // 现改为单一低透明度填充，视觉更干净。
-            // padding 再收 10pt：避免中心底色撑到进度弧内侧，把弧线的存在感压掉。
+            // MARK: 中心圆底 + 徽章 + 时间
+            // 内圆几乎撑满盘面：padding 取 lineWidth + 4（内圆半径 ≈ 外环半径的 0.83），
+            // 与参考图一致 —— 仅在进度环内侧留一圈极窄的间隙，形成"环 + 盘"的完整构图。
+            //
+            // 历史调整记录：
+            // - 初版 +14：内圆偏小，盘面中部空旷，缺少视觉实体感
+            // - 曾收窄到 +24：过度收窄，内圆退化成一小块圆斑，主体感丧失（已回退）
+            // 色值比外环略深，形成"环浅盘深"的层次；透明度随运行状态提升。
             Circle()
-                .fill(phaseColor.opacity(isActive ? 0.07 : 0.04))
-                .padding(lineWidth + 24)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            phaseColor.opacity(isActive ? 0.20 : 0.13),
+                            phaseColor.opacity(isActive ? 0.13 : 0.08)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .padding(lineWidth + 4)
 
             VStack(spacing: 10) {
                 FocusPhaseBadge()
