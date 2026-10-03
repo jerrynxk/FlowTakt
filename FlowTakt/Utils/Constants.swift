@@ -102,7 +102,10 @@ struct AppConstants {
     /// CloudKit 容器标识符
     static let cloudKitContainerIdentifier = "iCloud.com.flowtakt"
     /// 在线隐私政策 URL（托管页，供审核备注与 App 内跳转）
-    static let privacyPolicyURL = "https://9a35c2340fb1411db84664401f93dc55.sh2.agentos-app.net/privacy.html"
+    /// 2026-10-03：从临时域名 agentos-app.net 改为 GitHub Pages 永久地址。
+    /// 临时域名存在失效风险，而隐私政策 URL 是 App Store 审核必查项，
+    /// 域名一旦失效会直接导致审核被拒。
+    static let privacyPolicyURL = "https://jerrynxk.github.io/FlowTakt/privacy.html"
 
     /// 默认专注时长选项（分钟）
     static let focusDurationOptions: [TimeInterval] = [15, 25, 30, 45, 60].map { TimeInterval($0 * 60) }
