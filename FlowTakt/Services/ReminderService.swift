@@ -64,12 +64,53 @@ final class ReminderService: ReminderServiceProtocol {
     }
 
     /// 数据库重置后：全量重排（内部清理所有已不存在的 reminder_* 请求并重写快照）
+    ///
+    /// 修复（2026-10-15 通知乱弹）：重置/恢复数据只清了 `reminder_*`（日程提醒），
+    /// 但「每日提醒」「习惯打卡提醒」是**用户级偏好**（@AppStorage 开关），重置数据
+    /// 不应清除用户的提醒设置 —— 但若开关已关闭而请求仍残留，则会继续误弹。
+    /// 这里对两个固定 identifier 做"开关开着就补排、关着就清掉"的自愈。
     @objc private func handleDatabaseReset(_ notification: Notification) {
         rescheduleAll()
+        selfHealFixedReminders()
+    }
+
+    /// 固定标识提醒（每日/习惯打卡）的开关与系统请求自愈（修复 2026-10-15 通知乱弹）
+    private func selfHealFixedReminders() {
+        let center = self.notificationCenter
+        let dailyOn = UserDefaults.standard.bool(forKey: "dailyReminderEnabled")
+        let habitOn = UserDefaults.standard.bool(forKey: "habitReminderEnabled")
+
+        let dailyID = "daily_reminder"
+        let habitID = "habit_daily_reminder"
+
+        center.getPendingNotificationRequests { pending in
+            let ids = Set(pending.map(\.identifier))
+            if !dailyOn && ids.contains(dailyID) {
+                center.removePendingNotificationRequests(withIdentifiers: [dailyID])
+                print("🧹 每日提醒开关已关闭，清理残留请求")
+            }
+            if !habitOn && ids.contains(habitID) {
+                center.removePendingNotificationRequests(withIdentifiers: [habitID])
+                print("🧹 习惯打卡提醒开关已关闭，清理残留请求")
+            }
+        }
     }
 
     @objc private func handleContextChange(_ notification: Notification) {
-        // 仅当变更涉及 ScheduleItem 时才全量重排，避免任意实体保存都触发刷新
+        // 并发修复（2026-10-15 审查 P1-008）：userInfo 里的 NSManagedObject 归属其
+        // 发出通知的 context 队列；后台 context 合并触发时跨队列读 `$0.entity`
+        // 属未定义行为。统一收敛到主队列后判断（viewContext 为主队列 context）。
+        if Thread.isMainThread {
+            processContextChange(notification)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.processContextChange(notification)
+            }
+        }
+    }
+
+    /// 仅当变更涉及 ScheduleItem 时才全量重排，避免任意实体保存都触发刷新
+    private func processContextChange(_ notification: Notification) {
         guard let userInfo = notification.userInfo else {
             rescheduleAll()
             return
@@ -103,6 +144,9 @@ final class ReminderService: ReminderServiceProtocol {
     /// 仅将构建好的 `UNNotificationRequest`（值类型）交给后续异步 UN 调用，
     /// 避免在主上下文队列之外访问 Core Data 对象（iCloud 合并时存在竞态/崩溃风险）。
     private func performReschedule() {
+        // 崩溃修复（2026-10-15 审查 P1-003）：store 未就绪时 fetch 会抛不可捕获的
+        // ObjC 异常（iCloud 远端合并 → ObjectsDidChange → 此处 fetch 的链路）。
+        guard persistenceController.canFetchSafely("ReminderService.performReschedule") else { return }
         let context = persistenceController.viewContext
         context.perform { [weak self] in
             guard let self else { return }
@@ -163,6 +207,30 @@ final class ReminderService: ReminderServiceProtocol {
             if !toRemove.isEmpty {
                 notificationCenter.removePendingNotificationRequests(withIdentifiers: toRemove)
             }
+            // 修复（2026-10-14 P2）：iOS pending 通知硬上限 64 条，超出部分 add 静默失败。
+            // 提醒叠加（多日程 + 多习惯 + 每日提醒）时按时间先后截断并给出日志，
+            // 避免用户漏收提醒却毫无提示。
+            let remainingSlots = max(0, Self.systemPendingLimit - (pending.count - toRemove.count))
+            if requests.count > remainingSlots {
+                let sorted = requests.sorted(by: { (lhs: UNNotificationRequest, rhs: UNNotificationRequest) in
+                    // UNTimeIntervalNotificationTrigger 才有具体触发时间；
+                    // 其它触发类型（含 nil = 立即投递）统一按 0 处理，排在最前
+                    func fireDate(_ request: UNNotificationRequest) -> Date {
+                        guard let t = request.trigger as? UNTimeIntervalNotificationTrigger else {
+                            return .distantPast
+                        }
+                        return Date(timeIntervalSinceNow: t.timeInterval)
+                    }
+                    return fireDate(lhs) < fireDate(rhs)
+                })
+                let kept = Array(sorted.prefix(remainingSlots))
+                print("⚠️ 待调度提醒 \(requests.count) 条超出系统上限 \(Self.systemPendingLimit)，"
+                      + "已按时间先后保留 \(kept.count) 条（其余将不会提醒）")
+                for request in kept {
+                    notificationCenter.add(request)
+                }
+                return
+            }
             for request in requests {
                 notificationCenter.add(request)
             }
@@ -193,12 +261,16 @@ final class ReminderService: ReminderServiceProtocol {
         "reminder_\(item.id.uuidString)"
     }
 
+    /// iOS 每个 App 的 pending 通知硬上限为 64 条，超出部分 `add` 会静默失败。
+    /// 提醒多时（如日程 + 习惯 + 每日提醒叠加）必须截断，否则用户会漏收提醒且无任何提示。
+    private static let systemPendingLimit = 60
+
     private static func notificationTitle(for item: ScheduleItem) -> String {
         let lead = item.reminderLeadMinutesInt
         if lead > 0 {
-            return "\(item.categoryEnum.displayName)提醒 · 提前\(leadText(lead))"
+            return L10n.shared.提醒_提前模板(item.categoryEnum.displayName, leadText(lead))
         }
-        return "\(item.categoryEnum.displayName)提醒"
+        return L10n.shared.提醒_模板(item.categoryEnum.displayName)
     }
 
     private static func notificationBody(for item: ScheduleItem) -> String {
@@ -206,9 +278,9 @@ final class ReminderService: ReminderServiceProtocol {
     }
 
     static func leadText(_ minutes: Int) -> String {
-        if minutes % 1440 == 0 { return "\(minutes / 1440)天" }
-        if minutes >= 60 && minutes % 60 == 0 { return "\(minutes / 60)小时" }
-        return "\(minutes)分钟"
+        if minutes % 1440 == 0 { return L10n.shared.提前天数(minutes / 1440) }
+        if minutes >= 60 && minutes % 60 == 0 { return L10n.shared.提前小时数(minutes / 60) }
+        return L10n.shared.提前分钟数(minutes)
     }
 
     // MARK: - 小组件快照

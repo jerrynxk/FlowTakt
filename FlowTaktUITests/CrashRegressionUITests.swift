@@ -70,7 +70,11 @@ final class CrashRegressionUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10), "App 应正常启动")
 
-        switchTab(app, tabName: "计时")
+        // 2026-11-22：计时入口统一收敛到「专注」页正计时（习惯 tab 计时段已移除）
+        switchTab(app, tabName: "专注")
+        let stopwatchEntry = app.buttons["switchToStopwatchButton"]
+        if stopwatchEntry.waitForExistence(timeout: 4) { stopwatchEntry.tap() }
+        Thread.sleep(forTimeInterval: 0.5)
 
         // 记录 2 次（每次 start → stop），产生多条当日记录
         // 使用无障碍标识精确定位（源码已设 accessibilityIdentifier）
@@ -90,24 +94,19 @@ final class CrashRegressionUITests: XCTestCase {
 
         assertStillRunning(app, "计时记录创建")
 
-        // 逐条左滑删除全部记录（List 行删除入口）
-        // 滑动删除是 onDelete 唯一可达路径；重复执行以覆盖多轮删除后的索引收缩场景。
+        // 2026-11-22：嵌入形态记录列表改为每行的删除按钮（原独立页靠左滑 onDelete）。
+        // 反复点第一条删除按钮，覆盖多轮删除后数组收缩场景，验证不崩溃。
         for round in 0..<3 {
-            let cells = app.cells
-            guard cells.count > 0 else { break }
-            let lastCell = cells.element(boundBy: cells.count - 1)
-            guard lastCell.exists else { break }
-            lastCell.swipeLeft()
+            let deleteButtons = app.buttons.matching(
+                NSPredicate(format: "label BEGINSWITH '删除'")
+            )
+            guard deleteButtons.count > 0 else { break }
+            deleteButtons.element(boundBy: 0).tap()
             Thread.sleep(forTimeInterval: 0.6)
-            // 若出现「删除」确认按钮则点击
-            let confirmDelete = app.buttons["删除"]
-            if confirmDelete.exists {
-                confirmDelete.tap()
-            }
-            assertStillRunning(app, "第 \(round + 1) 次滑动删除")
+            assertStillRunning(app, "第 \(round + 1) 次删除记录")
         }
 
-        assertStillRunning(app, "计时页删除流程完成")
+        assertStillRunning(app, "正计时删除流程完成")
     }
 
     // MARK: - 2. 设置 → 导出数据（CSV）
@@ -136,12 +135,16 @@ final class CrashRegressionUITests: XCTestCase {
         // 导出成功后应弹出系统分享面板；关闭它
         let shareSheet = app.otherElements["ActivityListView"]
         if shareSheet.exists {
-            // 关闭分享面板
+            // 关闭分享面板（竞态修复同 JSON 备份用例：面板动画期间需等稳定再点）
+            Thread.sleep(forTimeInterval: 1.0)
             let closeButton = app.buttons.matching(
                 NSPredicate(format: "label CONTAINS[c] %@", "关闭")
             ).firstMatch
-            if closeButton.exists { closeButton.tap() }
-            else if app.buttons["取消"].exists { app.buttons["取消"].tap() }
+            if closeButton.exists && closeButton.isHittable {
+                closeButton.tap()
+            } else if app.buttons["取消"].exists && app.buttons["取消"].isHittable {
+                app.buttons["取消"].tap()
+            }
         }
 
         assertStillRunning(app, "CSV 数据导出")
@@ -169,11 +172,17 @@ final class CrashRegressionUITests: XCTestCase {
 
         let shareSheet = app.otherElements["ActivityListView"]
         if shareSheet.exists {
+            // 竞态修复（2026-11-19）：分享面板动画期间 exists 可能先为 true、随后元素重建，
+            // 直接 tap 会抛 "No matches found"。等面板稳定 + isHittable 双重判据。
+            Thread.sleep(forTimeInterval: 1.0)
             let closeButton = app.buttons.matching(
                 NSPredicate(format: "label CONTAINS[c] %@", "关闭")
             ).firstMatch
-            if closeButton.exists { closeButton.tap() }
-            else if app.buttons["取消"].exists { app.buttons["取消"].tap() }
+            if closeButton.exists && closeButton.isHittable {
+                closeButton.tap()
+            } else if app.buttons["取消"].exists && app.buttons["取消"].isHittable {
+                app.buttons["取消"].tap()
+            }
         }
 
         assertStillRunning(app, "JSON 数据备份")
@@ -259,5 +268,72 @@ final class CrashRegressionUITests: XCTestCase {
         }
 
         assertStillRunning(app, "恢复数据入口")
+    }
+
+    // MARK: - 无障碍：大字体下的布局回归（2026-10-15）
+
+    /// AX 最大字体档下，专注页关键元素不得被压扁/截断。
+    ///
+    /// 缺陷背景：AX5 下「自定义」chip 侧有 `maxWidth: 140` 硬上限，实测被压到 85pt
+    /// （「图标+自定义」需约 110pt）→ 显示成「自定义…」；同行「关联任务」更被压到
+    /// 只剩图标、文字完全消失。修复：两者改 VStack 纵向堆叠 + 去掉文案自带省略号 +
+    /// 文本加 minimumScaleFactor 兜底。
+    ///
+    /// 断言判据（实测基线，AX5 = accessibility-extra-extra-extra-large）：
+    /// - 元素 frame 宽度 ≥ 阈值（被压扁则远小于此）
+    /// - 静态文本 frame 高度 ≥ 40pt（文字被压没时高度塌陷）
+    /// - 无障碍 label 完整可读（不含被截断的省略号）
+    /// - isHittable == true（未被其它元素遮挡）
+    ///
+    /// 运行前置：`xcrun simctl ui <UDID> content_size accessibility-extra-extra-extra-large`
+    /// 自包含（2026-11-19）：不再依赖外部前置 —— 通过启动参数把本 App 的 Dynamic Type
+    /// 强制为 AX XXXL，避免"忘设字号 → chip 天然 85pt → 假红"。
+    @MainActor
+    func testAccessibility_AXMaxFont_FocusPageElementsNotSquashed() throws {
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"
+        ]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 15))
+        Thread.sleep(forTimeInterval: 3)
+
+        if app.tabBars.buttons["专注"].exists {
+            app.tabBars.buttons["专注"].tap()
+            Thread.sleep(forTimeInterval: 2)
+        }
+
+        // 「自定义」时长 chip：不得被压到 140pt 以下（修复前实测 85pt）
+        let customChip = app.buttons["自定义"]
+        XCTAssertTrue(customChip.waitForExistence(timeout: 5), "应存在「自定义」时长按钮")
+        XCTAssertGreaterThanOrEqual(customChip.frame.width, 160,
+                                    "「自定义」chip 被压扁（width=\(customChip.frame.width)pt，修复前 AX5 下为 85pt）")
+        XCTAssertTrue(customChip.isHittable, "「自定义」chip 应可点击")
+
+        // 「关联任务」卡片：修复前在 AX5 下文字被完全压没（只剩图标）
+        let taskBinding = app.buttons["关联任务"]
+        XCTAssertTrue(taskBinding.waitForExistence(timeout: 5), "应存在「关联任务」按钮")
+        XCTAssertGreaterThanOrEqual(taskBinding.frame.width, 200,
+                                     "「关联任务」卡片被压扁（width=\(taskBinding.frame.width)pt）")
+        XCTAssertTrue(taskBinding.isHittable, "「关联任务」卡片应可点击")
+
+        // 静态文本高度：被压没时高度塌陷到接近 0
+        for label in ["自定义", "关联任务"] {
+            let text = app.staticTexts[label]
+            XCTAssertTrue(text.waitForExistence(timeout: 3), "应存在文本「\(label)」")
+            XCTAssertGreaterThanOrEqual(text.frame.height, 40,
+                                        "文本「\(label)」高度塌陷（height=\(text.frame.height)pt，疑似被压没）")
+        }
+
+        // 无障碍 label 完整：不应是被截断的「自定义…」
+        XCTAssertEqual(customChip.label, "自定义",
+                       "chip 的无障碍 label 不应含截断省略号（实际「\(customChip.label)」）")
+
+        // 开始按钮在 AX5 下仍应保持可点击的主体尺寸
+        let startButton = app.buttons["开始"]
+        if startButton.exists {
+            XCTAssertGreaterThanOrEqual(startButton.frame.width, 44,
+                                        "开始按钮被压到小于最小触控目标")
+        }
     }
 }

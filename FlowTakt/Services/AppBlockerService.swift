@@ -72,7 +72,7 @@ final class AppBlockerService: AppBlockerServiceProtocol {
         }
 
         let process = Process()
-        process.launchPath = "/usr/bin/osascript"
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-e", dndScript]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice

@@ -40,6 +40,8 @@ struct TaskBreakdownView: View {
                 Text(L10n.shared.任务分解)
                     .font(.headline)
                     .foregroundColor(.primary)
+                    // 无障碍（2026-10-14）：卡片标题标记为二级标题
+                    .accessibilityHeading(.h2)
                 Spacer()
             }
             .padding(.horizontal, 16)
@@ -56,8 +58,6 @@ struct TaskBreakdownView: View {
                         )
                         .fill(Color.breakGreen)
                         .animation(.easeInOut(duration: 0.6), value: completedRatio)
-                        .accessibilityLabel(L10n.shared.已完成)
-                        .accessibilityValue("\(completedCount)")
 
                         // 活跃（橙色）
                         DonutSlice(
@@ -66,8 +66,6 @@ struct TaskBreakdownView: View {
                         )
                         .fill(Color.orange)
                         .animation(.easeInOut(duration: 0.6), value: completedRatio)
-                        .accessibilityLabel(L10n.shared.活跃)
-                        .accessibilityValue("\(activeCount)")
                     } else {
                         // 无数据时显示空环
                         Circle()
@@ -85,6 +83,11 @@ struct TaskBreakdownView: View {
                     }
                 }
                 .frame(width: 100, height: 100)
+                // 无障碍补齐（2026-11-02）：此前把 label/value 挂在 DonutSlice（Shape）上 ——
+                // Shape 不构成可访问元素，修饰不生效，读屏只能读到中心孤立的「5 任务」。
+                // 改为整环合并为一句完整汇总。
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(breakdownAccessibilityLabel)
 
                 // 图例
                 VStack(alignment: .leading, spacing: 12) {
@@ -111,6 +114,17 @@ struct TaskBreakdownView: View {
     }
 
     // MARK: - 图例行
+
+    /// 圆环读屏汇总：「任务分解，已完成 3 个（60%），活跃 2 个（40%），共 5 个任务」
+    private var breakdownAccessibilityLabel: String {
+        var parts = [L10n.shared.任务分解]
+        if totalCount > 0 {
+            parts.append("\(L10n.shared.已完成) \(completedCount) (\(Int(completedRatio * 100))%)")
+            parts.append("\(L10n.shared.活跃) \(activeCount) (\(Int(activeRatio * 100))%)")
+        }
+        parts.append(L10n.shared.任务总数(totalCount))
+        return parts.joined(separator: "，")
+    }
 
     private func legendRow(color: Color, label: String, count: Int, ratio: Double) -> some View {
         HStack(spacing: 8) {
@@ -167,6 +181,8 @@ struct TaskBreakdownView_Previews: PreviewProvider {
             ))
             .padding()
             .background(Color.appBackground)
-    }
+            .environmentObject(L10n.shared)
+    
+}
 }
 #endif

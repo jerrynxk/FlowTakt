@@ -67,7 +67,10 @@ final class ScheduleViewModel: ObservableObject {
     // MARK: - Private
 
     @objc private func handleDatabaseWillReset() {
+        // 修复（2026-10-15 审查 P1）：`weekEvents` 同样持有已删除的 NSManagedObject 引用，
+        // 只清 `events` 会导致重置窗口期切到周视图时 SwiftUI 访问失效对象 → EXC_BAD_ACCESS。
         events = []
+        weekEvents = []
     }
 
     @objc private func handleDatabaseDidReset() {
@@ -86,7 +89,13 @@ final class ScheduleViewModel: ObservableObject {
     /// 刷新指定日期的事件
     /// - Parameter date: 目标日期
     func refreshForDate(_ date: Date) {
-        events = scheduleService.fetchEventsForDate(date)
+        // 修复（2026-10-14 P1）：原实现把 `events` 覆写为「仅选中那一天」，而月视图整月
+        // 圆点派生自 `events` → 点任意一天后整月圆点全部消失（且无声）。
+        // 现在 `events` 始终承载「当前月」数据源，当日列表由视图按 selectedDate 过滤派生。
+        if !Calendar.current.isDate(date, equalTo: currentMonth, toGranularity: .month) {
+            // 选到别的月（如周视图跨月）时，先把数据源切到该月，避免当日列表为空
+            refreshForMonth(date)
+        }
         selectedDate = date
     }
 

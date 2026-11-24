@@ -7,6 +7,7 @@ struct TaskDetailView: View {
     let task: Task
 
     @EnvironmentObject var taskViewModel: TaskViewModel
+    @EnvironmentObject var tagViewModel: TagViewModel
     @EnvironmentObject var l10n: L10n
     @Environment(\.dismiss) var dismiss
 
@@ -18,6 +19,8 @@ struct TaskDetailView: View {
     @State private var hasDueDate: Bool = false
     @State private var showDeleteConfirmation: Bool = false
     @State private var hasChanges: Bool = false
+    /// 标签选择态（loadTaskValues 时从 task.tags 初始化；保存时全量替换）
+    @State private var selectedTagIDs: Set<UUID> = []
 
     private let priorityValues: [Int16] = [1, 2, 3]
 
@@ -36,7 +39,7 @@ struct TaskDetailView: View {
             Section {
                 TextField(L10n.shared.任务标题, text: $title)
                     .font(.body)
-                    .onChange(of: title) { _ in hasChanges = true }
+                    .onChange(of: title) { _, _ in hasChanges = true }
 
                 ZStack(alignment: .topLeading) {
                     if notes.isEmpty {
@@ -47,7 +50,9 @@ struct TaskDetailView: View {
                     }
                     TextEditor(text: $notes)
                         .frame(minHeight: 100)
-                        .onChange(of: notes) { _ in hasChanges = true }
+                        // 无障碍（2026-10-14）：TextEditor 补标签
+                        .accessibilityLabel(L10n.shared.备注)
+                        .onChange(of: notes) { _, _ in hasChanges = true }
                 }
             }
 
@@ -57,10 +62,12 @@ struct TaskDetailView: View {
                     HStack {
                         Image(systemName: "timer")
                             .foregroundColor(.focusRed)
+                            // 无障碍补齐（2026-11-02）：装饰图标不单独朗读（否则读「计时器 2 个番茄钟」）
+                            .accessibilityHidden(true)
                         Text(L10n.shared.estimatedPomodoros(Int(estimatedPomodoros)))
                     }
                 }
-                .onChange(of: estimatedPomodoros) { _ in hasChanges = true }
+                .onChange(of: estimatedPomodoros) { _, _ in hasChanges = true }
 
                 // 进度条
                 VStack(spacing: 6) {
@@ -68,11 +75,20 @@ struct TaskDetailView: View {
                         Text(L10n.shared.进度)
                             .foregroundColor(.secondary)
                         Spacer()
-                        Text("\(task.completedPomodoros) / \(estimatedPomodoros)")
+                        // 修复（2026-10-14 P2）：分子按分母钳制 —— completedPomodoros 只增不减，
+                        // 而 estimatedPomodoros 可下调到 1，原实现会显示「5 / 2」
+                        Text("\(min(Int(task.completedPomodoros), max(1, Int(estimatedPomodoros)))) / \(max(1, Int(estimatedPomodoros)))")
                             .foregroundColor(.secondary)
                     }
                     .font(.caption)
                     .padding(.top, 4)
+                    // 无障碍补齐（2026-11-02）：数字原样朗读会被读成「2 斜杠 6 番茄钟」，
+                    // 合并为一句语义化描述
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(L10n.shared.番茄进度(
+                        min(Int(task.completedPomodoros), max(1, Int(estimatedPomodoros))),
+                        max(1, Int(estimatedPomodoros))
+                    ))
 
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
@@ -84,11 +100,13 @@ struct TaskDetailView: View {
                                 ? min(Double(task.completedPomodoros) / Double(estimatedPomodoros), 1.0)
                                 : 0
                             RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.forPriority(task.priority))
+                                .fill(Color.forPriority(priority))  // 读编辑中的优先级，改完即变色（修复 P2-40）
                                 .frame(width: geometry.size.width * CGFloat(progress), height: 8)
                         }
                     }
                     .frame(height: 8)
+                    // 无障碍补齐（2026-11-02）：纯视觉进度条，数值已由上方文字元素播报
+                    .accessibilityHidden(true)
                 }
             }
 
@@ -106,7 +124,13 @@ struct TaskDetailView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .onChange(of: priority) { _ in hasChanges = true }
+                .onChange(of: priority) { _, _ in hasChanges = true }
+            }
+
+            // MARK: 标签（用户反馈 2026-11-19：打通任务↔标签关联，补创建入口）
+            Section(L10n.shared.标签) {
+                TagEditorView(selectedTagIDs: $selectedTagIDs)
+                    .onChange(of: selectedTagIDs) { _, _ in hasChanges = true }
             }
 
             // MARK: 状态
@@ -122,7 +146,7 @@ struct TaskDetailView: View {
             Section(L10n.shared.截止日期) {
                 Toggle(L10n.shared.设置截止日期, isOn: $hasDueDate)
                     .tint(.focusRed)
-                    .onChange(of: hasDueDate) { _ in hasChanges = true }
+                    .onChange(of: hasDueDate) { _, _ in hasChanges = true }
 
                 if hasDueDate {
                     DatePicker(
@@ -131,7 +155,7 @@ struct TaskDetailView: View {
                         displayedComponents: .date
                     )
                     .datePickerStyle(.graphical)
-                    .onChange(of: dueDate) { _ in hasChanges = true }
+                    .onChange(of: dueDate) { _, _ in hasChanges = true }
                 }
             }
 
@@ -165,15 +189,21 @@ struct TaskDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
+        // 滚动统一调整（2026-11-02）：禁用弹性 + 柔化撞停减速
+        .disableBounce()
         .navigationTitle(L10n.shared.任务详情)
         .navigationBarTitleDisplayMode(.inline)
+        // 2026-10-14：列表页为让标题行紧贴顶部分段控件而隐藏了导航栏
+        // （`.toolbar(.hidden, for: .navigationBar)`）。此处显式声明可见，
+        // 确保详情页的返回按钮与「保存」按钮不受父级设置波及。
+        .toolbar(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button(L10n.shared.保存) {
                     saveChanges()
                 }
                 .fontWeight(.semibold)
-                .disabled(!hasChanges || title.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(!hasChanges || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .alert(L10n.shared.确认删除, isPresented: $showDeleteConfirmation) {
@@ -215,6 +245,8 @@ struct TaskDetailView: View {
         notes = task.notes ?? ""
         estimatedPomodoros = task.estimatedPomodoros
         priority = task.priority
+        // 标签选择态初始化（id 集合，保存时经 TagViewModel 解析回 Tag）
+        selectedTagIDs = Set(task.tags.map { $0.id })
         if let date = task.dueDate {
             hasDueDate = true
             dueDate = date
@@ -239,6 +271,8 @@ struct TaskDetailView: View {
             priority: priority,
             dueDate: targetDueDate
         )
+        // 标签全量替换（走 TagService；与 updateTask 一样经 Service 层写入）
+        tagViewModel.setTags(tagViewModel.resolveTags(ids: selectedTagIDs), on: task)
         hasChanges = false
     }
 
@@ -272,7 +306,7 @@ struct TaskDetailView: View {
 #Preview {
     let context = PersistenceController.preview.viewContext
     let task = Task(context: context)
-    task.id = UUID()
+    task.storageId = UUID()
     task.title = "完成设计稿"
     task.notes = "包括首页、详情页和设置页"
     task.estimatedPomodoros = 6
@@ -287,5 +321,10 @@ struct TaskDetailView: View {
         TaskDetailView(task: task)
             .environment(\.managedObjectContext, context)
             .environmentObject(AppDependency().taskViewModel)
+            .environmentObject(TagViewModel(
+                tagService: TagService(persistenceController: PersistenceController.preview),
+                persistenceController: PersistenceController.preview
+            ))
+            .environmentObject(L10n.shared)
     }
 }

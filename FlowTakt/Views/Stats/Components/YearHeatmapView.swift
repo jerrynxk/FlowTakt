@@ -9,6 +9,9 @@ struct YearHeatmapView: View {
 
     private let calendar = Calendar.current
 
+    /// 网格列步长（格子 11pt + 间距 3pt），与格子行 HStack(spacing: 3) 保持一致
+    private static let columnStride: CGFloat = 14
+
     /// 月份标签格式化器（静态缓存，避免每帧创建）
     private static let monthFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -63,6 +66,10 @@ struct YearHeatmapView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(l10n.专注年热力图
             + "：" + l10n.年打卡天数(statsViewModel.yearlyTotalDays))
+        // 修复（2026-10-14 审查 T3）：UI 测试原先用 staticTexts["专注年热力图"] 精确匹配，
+        // 依赖「combine 后标题仍作为独立子元素暴露」这一未文档化行为（实测当前可用，但很脆弱）。
+        // 加显式 identifier，让 UI 测试按 identifier 查询，行为确定化。
+        .accessibilityIdentifier("yearHeatmap")
     }
 
     private var heatmapGrid: some View {
@@ -72,8 +79,11 @@ struct YearHeatmapView: View {
         guard let backDate = calendar.date(byAdding: .day, value: -364, to: end) else {
             return AnyView(EmptyView())
         }
+        // 修复（2026-10-14 P2）：周起始统一为**周一** —— 此前年热力图周日起、习惯热力图周一起，
+        // 同一 App 两个热力图首列差一天。判据与 HabitTrackView 的 `(weekday + 5) % 7` 一致。
         let weekdayBack = calendar.component(.weekday, from: backDate)
-        guard let gridStart = calendar.date(byAdding: .day, value: -(weekdayBack - 1), to: backDate) else {
+        let daysFromMonday = (weekdayBack + 5) % 7
+        guard let gridStart = calendar.date(byAdding: .day, value: -daysFromMonday, to: backDate) else {
             return AnyView(EmptyView())
         }
         let totalDays = calendar.dateComponents([.day], from: gridStart, to: end).day ?? 0
@@ -100,18 +110,19 @@ struct YearHeatmapView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 4) {
                     // 月份标签行
-                    HStack(alignment: .top, spacing: 3) {
+                    // 修复（2026-10-14 P2）：标签改**绝对定位**对齐网格列。
+                    // 原实现用 HStack 流式排布后又叠加 `.offset(x: label.offset * 14)`，
+                    // 两者相加导致第 2 个月起依次多偏 14/28/42pt（月份标签全部错位）。
+                    ZStack(alignment: .topLeading) {
                         ForEach(monthLabels, id: \.offset) { label in
                             Text(label.text)
                                 .font(.system(size: 9))
                                 .foregroundColor(.secondary)
-                                .frame(width: 11)
-                                .offset(x: CGFloat(label.offset) * 14, y: 0)
+                                .fixedSize()
+                                .offset(x: CGFloat(label.offset) * Self.columnStride, y: 0)
                         }
-                        Spacer(minLength: 0)
                     }
                     .frame(height: 12)
-                    .padding(.leading, 0)
 
                     // 格子行（每行 53 列中的一格）
                     HStack(alignment: .top, spacing: 3) {
@@ -126,6 +137,7 @@ struct YearHeatmapView: View {
                 }
                 .padding(.bottom, 2)
             }
+            .disableBounce()
         )
     }
 
@@ -133,14 +145,19 @@ struct YearHeatmapView: View {
         let key = calendar.startOfDay(for: date)
         let count = statsViewModel.yearlyCounts[key] ?? 0
         return RoundedRectangle(cornerRadius: 2)
-            .fill(isFuture ? Color(.systemGray5).opacity(0.4) : color(forCount: count))
+            .fill(isFuture ? Color(.systemGray5).opacity(0.55) : color(forCount: count))
             .frame(width: 11, height: 11)
             .accessibilityHidden(true)
     }
 
+    // 空格配色（2026-11-02 修复）：
+    // 原用 systemGray6 —— 深色下该色值为 #1C1C1E，与卡片底色
+    // secondarySystemGroupedBackground 完全相同，整片热力图格子"消失"，
+    // 只在有打卡数据处留下零星红点。改用 systemGray5（深色 #2C2C2E / 浅色 #E5E5EA），
+    // 在两种模式的卡片底上都能稳定分辨。
     private func color(forCount count: Int) -> Color {
         switch count {
-        case 0:  return Color(.systemGray6)
+        case 0:  return Color(.systemGray5)
         case 1:  return Color.focusRed.opacity(0.25)
         case 2:  return Color.focusRed.opacity(0.45)
         case 3:  return Color.focusRed.opacity(0.7)
@@ -150,7 +167,7 @@ struct YearHeatmapView: View {
 
     private func color(forLevel level: Int) -> Color {
         switch level {
-        case 0:  return Color(.systemGray6)
+        case 0:  return Color(.systemGray5)
         case 1:  return Color.focusRed.opacity(0.25)
         case 2:  return Color.focusRed.opacity(0.45)
         case 3:  return Color.focusRed.opacity(0.7)
@@ -171,4 +188,5 @@ struct YearHeatmapView: View {
         ))
         .padding()
         .background(Color.appBackground)
+        .environmentObject(L10n.shared)
 }

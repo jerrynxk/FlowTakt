@@ -26,14 +26,27 @@ struct DurationChipsView: View {
                     .font(.caption2)
                 Text(L10n.shared.时长预设自定义)
                     .font(.footnote.weight(.medium))
+                    // 无障碍（2026-10-15 AX5 实测）：独占整行后仍显示「自定义…」——
+                    // Menu 标签默认按文本理想宽度布局但受父容器约束。允许缩放到 0.5
+                    // 后仍可读（AX5 下约 7pt），保证任何字体档位都不出现省略号。
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .allowsTightening(true)
             }
             .foregroundColor(.secondary)
             .frame(minHeight: 32)
             .padding(.horizontal, 14)
+            // 深色修复（2026-11-02）：底色原为 systemBackground —— 深色下纯黑，
+            // 与纯黑页面同色，胶囊只剩一圈描边、内部"掏空"。
+            // 改用 secondarySystemGroupedBackground（深色 #1C1C1E / 浅色白），
+            // 与 cardStyle 同色阶，胶囊成为一片可见的面而非一条线。
             .background(
                 Capsule()
-                    .stroke(Color(.systemGray3), lineWidth: 1)
-                    .background(Capsule().fill(Color(.systemBackground)))
+                    .fill(Color(.secondarySystemGroupedBackground))
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(Color(.separator).opacity(0.45), lineWidth: 0.5)
+                    )
             )
         }
         .buttonStyle(.plain)
@@ -79,15 +92,24 @@ struct DurationChipsView: View {
         // 触觉反馈：时长选择（轻量选择反馈）
         HapticManager.shared.selectionFeedback()
 
-        switch focusViewModel.activePhase {
+        // 修复（2026-10-14 审查 P1-10）：先快照当前阶段。
+        // abandonSession() 会把 activePhase 重置为 .focus，若之后再读 activePhase，
+        // 「休息阶段运行中选预设」会启动一个**专注**（而不是所选的休息），轮次也被重置。
+        let phase = focusViewModel.activePhase
+
+        switch phase {
         case .focus:      focusViewModel.applyFocusDuration(duration)
         case .shortBreak: focusViewModel.applyShortBreakDuration(duration)
         case .longBreak:  focusViewModel.applyLongBreakDuration(duration)
         }
         // 审查修复（2026-08-12）：运行中/暂停态先放弃当前会话，再以新时长启动
+        // 修复（2026-10-14 P2）：abandonSession 会把轮次重置为 1 —— 「改个时长」不该
+        // 抹掉「每 N 轮长休息」的进度，故保留并在启动后恢复。
+        let preservedRound = focusViewModel.currentRoundIndex
         if focusViewModel.timerState != .idle {
             focusViewModel.abandonSession()
         }
-        focusViewModel.startFocus(phase: focusViewModel.activePhase, durationOverride: duration)
+        focusViewModel.startFocus(phase: phase, durationOverride: duration)
+        focusViewModel.restoreRoundIndex(preservedRound)
     }
 }

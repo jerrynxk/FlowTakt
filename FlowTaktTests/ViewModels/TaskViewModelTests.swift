@@ -44,7 +44,7 @@ final class TaskViewModelTests: XCTestCase {
     func testCreateTask_GivenValidInput_ThenTaskAddedToList() {
         let context = persistence.viewContext
         let newTask = Task(context: context)
-        newTask.id = UUID()
+        newTask.storageId = UUID()
         newTask.title = "新任务"
         newTask.status = TaskStatus.active.rawValue
         newTask.createdAt = Date()
@@ -73,7 +73,7 @@ final class TaskViewModelTests: XCTestCase {
     func testDeleteTask_ThenTaskRemovedFromList() {
         let context = persistence.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "待删除"
         task.status = TaskStatus.active.rawValue
         task.createdAt = Date()
@@ -98,7 +98,7 @@ final class TaskViewModelTests: XCTestCase {
     func testCompleteTask_ThenStatusBecomesCompleted() {
         let context = persistence.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "完成任务"
         task.status = TaskStatus.active.rawValue
         task.createdAt = Date()
@@ -121,7 +121,7 @@ final class TaskViewModelTests: XCTestCase {
     func testReactivateTask_ThenStatusBecomesActive() {
         let context = persistence.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "重新激活"
         task.status = TaskStatus.completed.rawValue
         task.createdAt = Date()
@@ -143,14 +143,14 @@ final class TaskViewModelTests: XCTestCase {
     func testLoadTasks_WhenServiceHasTasks_ThenListsPopulated() {
         let context = persistence.viewContext
         let activeTask = Task(context: context)
-        activeTask.id = UUID()
+        activeTask.storageId = UUID()
         activeTask.title = "活跃任务"
         activeTask.status = TaskStatus.active.rawValue
         activeTask.createdAt = Date()
         activeTask.updatedAt = Date()
 
         let completedTask = Task(context: context)
-        completedTask.id = UUID()
+        completedTask.storageId = UUID()
         completedTask.title = "已完成"
         completedTask.status = TaskStatus.completed.rawValue
         completedTask.createdAt = Date()
@@ -170,7 +170,7 @@ final class TaskViewModelTests: XCTestCase {
     func testUpdateTask_ThenDoesNotCrash() {
         let context = persistence.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "原始标题"
         task.status = TaskStatus.active.rawValue
         task.createdAt = Date()
@@ -200,7 +200,7 @@ final class TaskViewModelTests: XCTestCase {
         mockTaskService.tasks = []
         let context = persistence.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "不存在"
 
         viewModel.deleteTask(task)
@@ -212,7 +212,7 @@ final class TaskViewModelTests: XCTestCase {
     func testArchiveTask_ThenStatusBecomesArchivedAndAppearsInArchivedList() {
         let context = persistence.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "待归档任务"
         task.status = TaskStatus.active.rawValue
         task.createdAt = Date()
@@ -242,7 +242,7 @@ final class TaskViewModelTests: XCTestCase {
 
     private func makeTask(title: String, priority: Int16, dueDate: Date?, createdAt: Date) -> Task {
         let task = Task(context: persistence.viewContext)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = title
         task.status = TaskStatus.active.rawValue
         task.priority = priority

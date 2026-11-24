@@ -39,6 +39,14 @@ final class TaskService: TaskServiceProtocol {
     private var viewContext: NSManagedObjectContext {
         persistenceController.viewContext
     }
+    /// save 失败统一上报（判据收口，2026-10-15 审查 P1-001）：
+    /// 所有写路径经此检查，store 未就绪/保存失败时不再静默丢弃。
+    func saveAndReport() {
+        if !persistenceController.save() {
+            onError?(AppError.coreDataSaveFailed(NSError(domain: "FlowTakt.TaskService",
+                                                         code: NSFileWriteUnknownError)))
+        }
+    }
 
     init(persistenceController: PersistenceController) {
         self.persistenceController = persistenceController
@@ -46,7 +54,7 @@ final class TaskService: TaskServiceProtocol {
 
     func createTask(title: String, notes: String?, estimatedPomodoros: Int16, priority: Int16, dueDate: Date?, recurrenceRule: String? = nil) -> Task {
         let task = Task(context: viewContext)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = title
         task.notes = notes
         task.estimatedPomodoros = estimatedPomodoros
@@ -60,15 +68,19 @@ final class TaskService: TaskServiceProtocol {
             task.recurrenceRule = rule
         }
         // 计算下一个可用的 displayOrder：在已有任务中取最大值 + 1，避免删除旧任务后重复
-        let orderRequest = Task.fetchRequest()
-        orderRequest.includesPendingChanges = false
-        orderRequest.fetchLimit = 1
-        orderRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Task.displayOrder, ascending: false)]
-        let maxOrder = (try? viewContext.fetch(orderRequest).first?.displayOrder) ?? -1
+        // 崩溃修复（2026-10-15 审查 P0-2）：try? 捕获不了 ObjC 异常，store 未就绪须先短路
+        var maxOrder: Int16 = -1
+        if persistenceController.canFetchSafely("TaskService.createTask.displayOrder") {
+            let orderRequest = Task.fetchRequest()
+            orderRequest.includesPendingChanges = false
+            orderRequest.fetchLimit = 1
+            orderRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Task.displayOrder, ascending: false)]
+            maxOrder = (try? viewContext.fetch(orderRequest).first?.displayOrder) ?? -1
+        }
         task.displayOrder = maxOrder + 1
         task.createdAt = Date()
         task.updatedAt = Date()
-        persistenceController.save()
+        saveAndReport()
         return task
     }
 
@@ -91,15 +103,26 @@ final class TaskService: TaskServiceProtocol {
             // 处理重复任务：自动创建下一个实例
             handleRecurringTaskCompletion(task)
         }
-        persistenceController.save()
+        saveAndReport()
     }
 
     func deleteTask(_ task: Task) {
+        // 修复（2026-10-14 审查 P0-2）：数据模型中 `Task.sessions` 的删除规则是 **Cascade**，
+        // 直接删任务会连带删除该任务的**全部专注历史**，包括正在运行的那一条 ——
+        // 专注页 `currentSession` 变成悬垂引用，计时结束/暂停/恢复时读已删对象属未定义行为
+        // （可能触发 CoreData fault 异常崩溃），且该番茄记录凭空消失。
+        // 先把会话的 task 置 nil，使删除退化为 Nullify 语义：任务删除、专注历史保留。
+        let now = Date()
+        for session in task.sessions {
+            session.task = nil
+            session.updatedAt = now
+        }
         viewContext.delete(task)
-        persistenceController.save()
+        saveAndReport()
     }
 
     func fetchAllTasks() -> [Task] {
+        guard persistenceController.canFetchSafely("TaskService.fetchAllTasks") else { return [] }
         let request = Task.fetchRequest()
         request.sortDescriptors = [NSSortDescriptor(keyPath: \Task.displayOrder, ascending: true)]
         do {
@@ -112,6 +135,7 @@ final class TaskService: TaskServiceProtocol {
     }
 
     func fetchActiveTasks() -> [Task] {
+        guard persistenceController.canFetchSafely("TaskService.fetchActiveTasks") else { return [] }
         let request = Task.fetchRequest()
         request.predicate = NSPredicate(format: "status == %@", TaskStatus.active.rawValue)
         request.sortDescriptors = [NSSortDescriptor(keyPath: \Task.displayOrder, ascending: true)]
@@ -125,6 +149,7 @@ final class TaskService: TaskServiceProtocol {
     }
 
     func fetchCompletedTasks() -> [Task] {
+        guard persistenceController.canFetchSafely("TaskService.fetchCompletedTasks") else { return [] }
         let request = Task.fetchRequest()
         request.predicate = NSPredicate(format: "status == %@", TaskStatus.completed.rawValue)
         request.sortDescriptors = [NSSortDescriptor(keyPath: \Task.updatedAt, ascending: false)]
@@ -138,6 +163,7 @@ final class TaskService: TaskServiceProtocol {
     }
 
     func fetchArchivedTasks() -> [Task] {
+        guard persistenceController.canFetchSafely("TaskService.fetchArchivedTasks") else { return [] }
         let request = Task.fetchRequest()
         request.predicate = NSPredicate(format: "status == %@", TaskStatus.archived.rawValue)
         request.sortDescriptors = [NSSortDescriptor(keyPath: \Task.updatedAt, ascending: false)]
@@ -153,7 +179,7 @@ final class TaskService: TaskServiceProtocol {
     func incrementCompletedPomodoros(for task: Task) {
         task.completedPomodoros += 1
         task.updatedAt = Date()
-        persistenceController.save()
+        saveAndReport()
     }
 
     // MARK: - 重复任务处理
@@ -164,6 +190,8 @@ final class TaskService: TaskServiceProtocol {
 
         // 幂等：若已存在同标题的 active 实例（完成→重新激活→再完成等重复操作），不再创建，
         // 避免同一条重复任务生成多个并列的下一实例
+        // 崩溃修复（2026-10-15 审查 P0-2）：try? 捕获不了 ObjC 异常，store 未就绪时跳过创建
+        guard persistenceController.canFetchSafely("TaskService.handleRecurringTaskCompletion") else { return }
         let existingRequest = Task.fetchRequest()
         existingRequest.predicate = NSPredicate(
             format: "title == %@ AND status == %@",
@@ -190,7 +218,7 @@ final class TaskService: TaskServiceProtocol {
 
         // 创建同标题的下一个任务实例
         let nextTask = Task(context: viewContext)
-        nextTask.id = UUID()
+        nextTask.storageId = UUID()
         nextTask.title = task.title
         nextTask.notes = task.notes
         nextTask.estimatedPomodoros = task.estimatedPomodoros
@@ -203,12 +231,15 @@ final class TaskService: TaskServiceProtocol {
         nextTask.recurrenceEndDate = task.recurrenceEndDate
         // 复制标签关系（避免重复任务丢失分类）
         nextTask.tags = task.tags
+        // 继承父任务关系（2026-10-15 审查 P2-D3）：否则子任务生成的下一实例会
+        // 变成顶层任务，子任务链表断裂、与原任务结构不一致
+        nextTask.parentTask = task.parentTask
         // displayOrder 设为已完成任务 displayOrder + 1，避免排序值冲突
         nextTask.displayOrder = task.displayOrder + 1
         nextTask.createdAt = Date()
         nextTask.updatedAt = Date()
         // 显式保存，确保重复任务的下一实例被持久化
-        persistenceController.save()
+        saveAndReport()
     }
 
     /// 根据重复规则计算下一个日期

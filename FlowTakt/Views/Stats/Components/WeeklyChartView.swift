@@ -20,6 +20,8 @@ struct WeeklyChartView: View {
             // 标题
             HStack {
                 Image(systemName: "chart.bar.fill")
+                // 修复（P2）：装饰性 SF Symbol 不应被 VoiceOver 念出符号名
+                .accessibilityHidden(true)
                     .foregroundColor(.focusRed)
                 Text(L10n.shared.本周趋势)
                     .font(.headline)
@@ -32,9 +34,12 @@ struct WeeklyChartView: View {
 
             // 柱状图（DailyStats 为 Identifiable，id 即日期，避免索引作 id 的错位风险）
             HStack(alignment: .bottom, spacing: 0) {
-                ForEach(statsViewModel.weeklyData) { dailyStat in
+                // 修复（P2）：一次算好，供所有柱子复用
+            let maxPomodorosInData = max(1, statsViewModel.weeklyData.map(\.completedPomodoros).max() ?? 1)
+            ForEach(statsViewModel.weeklyData) { dailyStat in
                     let isToday = Calendar.current.isDateInToday(dailyStat.date)
-                    let maxPomodoros = statsViewModel.weeklyData.map(\.completedPomodoros).max() ?? 1
+                    // 修复（P2）：max 原本在 ForEach 内每帧算 7 次 → 由外层一次性算出
+                    let maxPomodoros = maxPomodorosInData
                     let ratio = maxPomodoros > 0
                         ? CGFloat(dailyStat.completedPomodoros) / CGFloat(maxPomodoros)
                         : 0
@@ -99,6 +104,8 @@ struct WeeklyChartView_Previews: PreviewProvider {
             ))
             .padding()
             .background(Color.appBackground)
-    }
+            .environmentObject(L10n.shared)
+    
+}
 }
 #endif

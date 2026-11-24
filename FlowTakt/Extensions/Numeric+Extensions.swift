@@ -26,7 +26,7 @@ extension Double {
     }
 
     /// 崩溃修复（2026-10-02）：是否为有限值且落在 `[0, maxSaneDuration]` 区间。
-    /// 上限取 365 天（秒），既覆盖任何真实使用场景，又远低于 Int64.max。
+    /// 上限取 Int32.max 秒（约 68 年），确保 Int 转换永不 trap，既覆盖任何真实使用场景，又远低于 Int64.max。
     var isSaneValue: Bool {
         return isFinite && self >= 0 && self <= Double(Int32.max)
     }

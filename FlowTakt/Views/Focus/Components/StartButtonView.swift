@@ -79,23 +79,52 @@ struct StartButtonView: View {
     private var mainButton: some View {
         // 主按钮本体：实色圆 + 微阴影，避开 iOS 16 borderedProminent 的"按钮"硬感
         // 微阴影让按钮"漂浮"，但不出现 12+pt 的夸张 halo
+        //
+        // 精致化（2026-11-02）：
+        // 1. 顶部到底部加同色渐变（上部略透），避免纯平涂的"色块"感；
+        // 2. 外圈加一层模糊柔光，把按钮从纯黑背景中托起 —— 深色下单个红色圆盘
+        //    直接落在 #000 上会显得"贴"在背景里，柔光给出轻微悬浮的空间感；
+        // 3. 内圈 1pt 白色高光描边，模拟受光边缘，提升体积感；
+        // 4. 按下时缩放至 0.94（PressableScaleStyle），提供明确的触觉呼应。
         Button(action: handleTap) {
-            Image(systemName: mainIcon)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(width: mainButtonSize, height: mainButtonSize)
-                .background(
-                    Circle()
-                        .fill(phaseColor)
-                )
-                .shadow(
-                    color: phaseColor.opacity(0.25),
-                    radius: 6,
-                    x: 0,
-                    y: 3
-                )
+            ZStack {
+                // 外柔光（不参与布局：外层 frame 固定为按钮尺寸）
+                Circle()
+                    .fill(phaseColor.opacity(0.22))
+                    .frame(width: mainButtonSize * 1.34, height: mainButtonSize * 1.34)
+                    .blur(radius: 11)
+
+                Image(systemName: mainIcon)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: mainButtonSize, height: mainButtonSize)
+                    .background(
+                        Circle().fill(
+                            LinearGradient(
+                                colors: [
+                                    phaseColor.opacity(0.92),
+                                    phaseColor
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                    )
+                    .overlay(
+                        Circle().strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                    )
+                    .shadow(
+                        color: phaseColor.opacity(0.30),
+                        radius: 8,
+                        x: 0,
+                        y: 4
+                    )
+            }
+            // 固定占位尺寸：柔光溢出绘制但不在 HStack 中占据额外空间，
+            // 保证与 Stop 按钮的 16pt 间距不因光晕而偏移
+            .frame(width: mainButtonSize, height: mainButtonSize)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableScaleStyle())
         .accessibilityLabel(mainLabel)
         .accessibilityHint(L10n.shared.长按时长手势提示)
         .contentShape(Circle())
@@ -122,10 +151,15 @@ struct StartButtonView: View {
                 .frame(width: stopButtonSize, height: stopButtonSize)
                 .background(
                     Circle()
-                        .fill(Color(.systemGray6))
+                        // 深色修复（2026-11-02）：systemGray6 在深色下接近纯黑，
+                        // 与页面背景同色 → 圆盘消失；改用卡片同色阶并补极细描边
+                        .fill(Color(.secondarySystemGroupedBackground))
+                )
+                .overlay(
+                    Circle().strokeBorder(Color(.separator).opacity(0.5), lineWidth: 0.5)
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableScaleStyle())
         .accessibilityLabel(L10n.shared.停止)
     }
 
@@ -171,6 +205,19 @@ struct StartButtonView: View {
         case .running: return "pause.fill"
         case .paused: return "play.fill"
         }
+    }
+}
+
+// MARK: - 可按压缩放样式（2026-11-02）
+// 主控按钮需要在按下瞬间有明确的形态反馈：纯色圆按钮若只有颜色变化，
+// 在深色背景上几乎不可感知。统一用 0.94 缩放 + 弹簧回弹，
+// 与页面其它动效（spring 0.35 / damping 0.7）保持同一手感族。
+
+private struct PressableScaleStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 

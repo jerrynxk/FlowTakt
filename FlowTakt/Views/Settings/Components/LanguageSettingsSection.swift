@@ -14,7 +14,7 @@ struct LanguageSettingsSection: View {
             } label: {
                 Label(L10n.shared.语言, systemImage: "globe")
             }
-            .onChange(of: viewModel.selectedLanguageOption) { newIndex in
+            .onChange(of: viewModel.selectedLanguageOption) { _, newIndex in
                 viewModel.updateLanguage(at: newIndex)
             }
         } header: {
@@ -27,4 +27,5 @@ struct LanguageSettingsSection: View {
     Form {
         LanguageSettingsSection(viewModel: SettingsViewModel(syncService: MockSyncService()))
     }
+    .environmentObject(L10n.shared)
 }

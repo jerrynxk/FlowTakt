@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreData
 
 // MARK: - 任务关联选择器（v1.3 UI 优化：卡片化，空态/任务详情双形态）
 
@@ -11,11 +12,11 @@ struct TaskBindingView: View {
         Menu {
             // "无关联任务" 选项
             Button(action: {
-                focusViewModel.selectedTask = nil
+                focusViewModel.selectTask(nil)
             }) {
                 HStack {
                     Text(L10n.shared.无关联任务)
-                    if focusViewModel.selectedTask == nil {
+                    if selectedTask == nil {
                         Image(systemName: "checkmark")
                     }
                 }
@@ -26,12 +27,12 @@ struct TaskBindingView: View {
             // 活跃任务列表
             ForEach(taskViewModel.activeTasks) { task in
                 Button(action: {
-                    focusViewModel.selectedTask = task
+                    focusViewModel.selectTask(task)
                 }) {
                     HStack {
                         Text(task.title)
                             .lineLimit(1)
-                        if focusViewModel.selectedTask?.id == task.id {
+                        if selectedTask?.id == task.id {
                             Image(systemName: "checkmark")
                         }
                     }
@@ -46,16 +47,23 @@ struct TaskBindingView: View {
 
     /// VoiceOver 菜单标签：有选中任务时读任务名，否则读「关联任务」
     private var accessibilityMenuLabel: String {
-        if let task = focusViewModel.selectedTask {
+        if let task = selectedTask {
             return L10n.shared.关联任务 + "，" + task.title
         }
         return L10n.shared.关联任务
     }
 
+    /// 当前选中的任务；已从库中删除（任务被删 / 云端同步删除）时视为无选择，
+    /// 避免把已删除的托管对象渲染出来（fault 访问是本项目历史崩溃源之一）。
+    private var selectedTask: Task? {
+        guard let task = focusViewModel.selectedTask, !task.isDeleted else { return nil }
+        return task
+    }
+
     /// 卡片内容：有任务显示任务详情，无任务显示占位提示
     private var content: some View {
         Group {
-            if let task = focusViewModel.selectedTask {
+            if let task = selectedTask {
                 HStack(spacing: 10) {
                     // 状态圆点（按优先级着色）
                     Circle()
@@ -67,6 +75,9 @@ struct TaskBindingView: View {
                             .font(.footnote.weight(.medium))
                             .foregroundColor(.primary)
                             .lineLimit(1)
+                            // 无障碍（2026-10-15 AX5 实测）：大字体下同行空间被挤压时
+                            // 文本会被 SwiftUI 直接压没（只剩图标），缩放兜底保证始终可读
+                            .minimumScaleFactor(0.7)
 
                         // 番茄进度
                         HStack(spacing: 3) {
@@ -76,6 +87,8 @@ struct TaskBindingView: View {
                             Text(L10n.shared.番茄进度(Int(task.completedPomodoros), Int(task.estimatedPomodoros)))
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
                         }
                     }
 
@@ -94,6 +107,8 @@ struct TaskBindingView: View {
                     Text(L10n.shared.关联任务)
                         .font(.footnote)
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
 
                     Spacer()
 
@@ -142,6 +157,8 @@ struct TaskBindingView_Previews: PreviewProvider {
                 taskService: TaskService(persistenceController: PersistenceController.shared),
                 persistenceController: PersistenceController.shared
             ))
-    }
+            .environmentObject(L10n.shared)
+    
+}
 }
 #endif

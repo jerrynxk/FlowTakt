@@ -49,7 +49,7 @@ final class TimeRecordViewModelTests: XCTestCase {
     func testStartRecording_ThenSetsRecordingState() {
         // Given
         let record = TimeRecord(context: persistence.viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.startTime = Date()
         record.duration = 0
         record.isBillable = true
@@ -68,7 +68,7 @@ final class TimeRecordViewModelTests: XCTestCase {
 
     func testStartRecording_ThenLoadsRecords() {
         let record = TimeRecord(context: persistence.viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.startTime = Date()
         record.duration = 0
         record.isBillable = true
@@ -88,7 +88,7 @@ final class TimeRecordViewModelTests: XCTestCase {
         mockTimeRecordService.totalDurationToReturn = 3600
 
         let record = TimeRecord(context: persistence.viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.startTime = Date()
         record.duration = 0
         record.isBillable = true
@@ -111,7 +111,7 @@ final class TimeRecordViewModelTests: XCTestCase {
     func testStartRecording_GivenAlreadyRecording_ThenIgnored() {
         // Given
         let record = TimeRecord(context: persistence.viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.startTime = Date()
         record.duration = 0
         record.isBillable = true
@@ -137,7 +137,7 @@ final class TimeRecordViewModelTests: XCTestCase {
     func testStartRecording_AfterStop_ThenAllowedAgain() {
         // Given
         let record = TimeRecord(context: persistence.viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.startTime = Date()
         record.duration = 0
         record.isBillable = true
@@ -166,7 +166,7 @@ final class TimeRecordViewModelTests: XCTestCase {
 
     func testStopRecording_ThenClearsRecordingState() {
         let record = TimeRecord(context: persistence.viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.startTime = Date()
         record.duration = 0
         record.isBillable = true
@@ -199,7 +199,7 @@ final class TimeRecordViewModelTests: XCTestCase {
 
     func testDeleteRecord_ThenRemovesFromList() {
         let record = TimeRecord(context: persistence.viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.startTime = Date()
         record.duration = 100
         record.isBillable = true
@@ -219,7 +219,7 @@ final class TimeRecordViewModelTests: XCTestCase {
 
     func testDeleteRecord_WhenIsCurrentRecord_ThenClearsRecordingState() {
         let record = TimeRecord(context: persistence.viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.startTime = Date()
         record.duration = 0
         record.isBillable = true
@@ -235,6 +235,37 @@ final class TimeRecordViewModelTests: XCTestCase {
         // Then
         XCTAssertFalse(viewModel.isRecording)
         XCTAssertNil(viewModel.currentRecord)
+    }
+
+    /// 回归（P0-4 崩溃点，2026-11-22 补）：多选删除传入的 indexSet 含越界索引时不得崩溃。
+    /// 原崩溃：`recordsForDate` 是计算属性，删除中 loadRecords() 替换数组使后续索引失效 → 越界。
+    /// 守卫已下沉到 ViewModel.deleteRecords(at:in:)，此测试直接覆盖该守卫。
+    func testDeleteRecords_WithOutOfRangeIndex_ThenNoCrashAndDeletesValidOnes() {
+        func makeRecord(_ suffix: Int) -> TimeRecord {
+            let r = TimeRecord(context: persistence.viewContext)
+            r.storageId = UUID()
+            r.startTime = Date()
+            r.duration = 100
+            r.createdAt = Date()
+            r.updatedAt = Date()
+            return r
+        }
+        let r0 = makeRecord(0), r1 = makeRecord(1), r2 = makeRecord(2)
+        let snapshot = [r0, r1, r2]
+        mockTimeRecordService.records = snapshot
+        viewModel.loadRecords()
+
+        // indexSet 含合法 0、2 与越界 99 —— 越界项应被守卫跳过，不崩溃
+        var indexSet = IndexSet()
+        indexSet.insert(0)
+        indexSet.insert(2)
+        indexSet.insert(99)
+        viewModel.deleteRecords(at: indexSet, in: snapshot)
+
+        XCTAssertEqual(mockTimeRecordService.records.count, 1, "应删除索引 0、2 两条，跳过越界 99")
+        XCTAssertFalse(mockTimeRecordService.records.contains { $0.id == r0.id })
+        XCTAssertFalse(mockTimeRecordService.records.contains { $0.id == r2.id })
+        XCTAssertTrue(mockTimeRecordService.records.contains { $0.id == r1.id }, "未选中的中间记录应保留")
     }
 
     // ========================================================================
@@ -257,7 +288,7 @@ final class TimeRecordViewModelTests: XCTestCase {
 
     func testLoadRecords_WhenServiceHasRecords_ThenPopulatesRecords() {
         let record = TimeRecord(context: persistence.viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.startTime = Date()
         record.duration = 300
         record.isBillable = true
@@ -281,7 +312,7 @@ final class TimeRecordViewModelTests: XCTestCase {
 
     func testDatabaseWillReset_ClearsAllState() {
         let record = TimeRecord(context: persistence.viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.startTime = Date()
         record.duration = 100
         record.isBillable = true
@@ -313,7 +344,7 @@ final class TimeRecordViewModelTests: XCTestCase {
         let expectation = expectation(description: "isRecording 发布为 true")
 
         let record = TimeRecord(context: persistence.viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.startTime = Date()
         record.duration = 0
         record.isBillable = true

@@ -24,7 +24,7 @@ final class BackupServiceTests: XCTestCase {
     private func seedData() {
         let context = persistence.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "备份任务"
         task.status = TaskStatus.active.rawValue
         task.estimatedPomodoros = 2
@@ -35,7 +35,7 @@ final class BackupServiceTests: XCTestCase {
         task.updatedAt = Date()
 
         let session = FocusSession(context: context)
-        session.id = UUID()
+        session.storageId = UUID()
         session.startTime = Date()
         session.plannedDuration = 1500
         session.actualDuration = 1500
@@ -49,12 +49,12 @@ final class BackupServiceTests: XCTestCase {
         try? context.save()
     }
 
-    func testExportJSON_ThenProducesFile() throws {
+    func testExportJSON_ThenProducesFile() async throws {
         // Given
         seedData()
 
         // When
-        let url = service.exportJSON()
+        let url = await service.exportJSONAsync()
 
         // Then
         let fileURL = try XCTUnwrap(url)
@@ -70,10 +70,11 @@ final class BackupServiceTests: XCTestCase {
         XCTAssertEqual(payload.focusSessions.first?.status, SessionStatus.completed.rawValue)
     }
 
-    func testExportThenImport_RoundTrip_RestoresData() throws {
+    func testExportThenImport_RoundTrip_RestoresData() async throws {
         // Given - 先导出（库中已有 1 任务 + 1 会话）
         seedData()
-        let backupURL = try XCTUnwrap(service.exportJSON())
+        let backupURLExported = await service.exportJSONAsync()
+        let backupURL = try XCTUnwrap(backupURLExported)
         XCTAssertEqual(try persistence.viewContext.count(for: Task.fetchRequest()), 1)
 
         // When - 直接恢复（BackupService 内部会先清空现有数据，再导入）
@@ -145,11 +146,11 @@ final class BackupServiceTests: XCTestCase {
         XCTAssertEqual(try persistence.viewContext.count(for: FocusSession.fetchRequest()), 1)
     }
 
-    func testExportImport_TagAndParentRelation_RoundTrip() throws {
+    func testExportImport_TagAndParentRelation_RoundTrip() async throws {
         // Given - 任务 + 标签 + 子任务 + 带标签的会话
         let context = persistence.viewContext
         let parent = Task(context: context)
-        parent.id = UUID()
+        parent.storageId = UUID()
         parent.title = "父任务"
         parent.status = TaskStatus.active.rawValue
         parent.estimatedPomodoros = 1
@@ -158,7 +159,7 @@ final class BackupServiceTests: XCTestCase {
         parent.updatedAt = Date()
 
         let child = Task(context: context)
-        child.id = UUID()
+        child.storageId = UUID()
         child.title = "子任务"
         child.status = TaskStatus.active.rawValue
         child.estimatedPomodoros = 1
@@ -168,13 +169,13 @@ final class BackupServiceTests: XCTestCase {
         child.updatedAt = Date()
 
         let tag = Tag(context: context)
-        tag.id = UUID()
+        tag.storageId = UUID()
         tag.name = "工作"
         tag.createdAt = Date()
         parent.tags.insert(tag)
 
         let session = FocusSession(context: context)
-        session.id = UUID()
+        session.storageId = UUID()
         session.startTime = Date()
         session.status = SessionStatus.completed.rawValue
         session.phase = FocusPhase.focus.rawValue
@@ -187,7 +188,8 @@ final class BackupServiceTests: XCTestCase {
         try? context.save()
 
         // When - 导出 → 恢复
-        let backupURL = try XCTUnwrap(service.exportJSON())
+        let backupURLExported = await service.exportJSONAsync()
+        let backupURL = try XCTUnwrap(backupURLExported)
         XCTAssertTrue(service.importJSON(from: backupURL))
 
         // Then - 标签 / 父子任务 / 会话标签关系全部恢复
@@ -202,5 +204,17 @@ final class BackupServiceTests: XCTestCase {
         XCTAssertEqual(restoredChild?.parentTask?.id, restoredParent?.id, "父子任务关系应恢复")
         XCTAssertEqual(restoredParent?.tags.first?.name, "工作", "任务标签关系应恢复")
         XCTAssertEqual(sessions.first?.tag?.id, tags.first?.id, "会话标签关系应恢复")
+    }
+}
+
+// MARK: - 测试辅助
+
+/// `BackupService.exportJSON(completion:)`（2026-10-15 起为后台 completion 形态，
+/// 与 DataExportService 逐字同构）的 async 测试包装，供各测试类以 await 调用。
+extension BackupService {
+    func exportJSONAsync() async -> URL? {
+        await withCheckedContinuation { continuation in
+            exportJSON { continuation.resume(returning: $0) }
+        }
     }
 }

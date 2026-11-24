@@ -216,47 +216,33 @@ final class BackupService {
 
     // MARK: - 导出
 
-    /// 导出全量数据为 JSON 文件；返回文件 URL（失败返回 nil）
-    func exportJSON() -> URL? {
-        let all = fetchAll()   // 只拉取一次，避免 6 次全表重复扫描（审查 #9）
-        let payload = BackupPayload(
-            version: BackupPayload.currentVersion,
-            exportedAt: Date(),
-            tasks: all.tasks.map(TaskDTO.init),
-            focusSessions: all.focusSessions.map(FocusSessionDTO.init),
-            habits: all.habits.map(HabitDTO.init),
-            // 崩溃修复（2026-10-02）：compactMap 过滤掉 habit 关系为 nil 的孤儿记录
-            // （`HabitRecordDTO.init?` 对 habit == nil 返回 nil），避免强解包触发
-            // EXC_BAD_ACCESS。孤儿记录本身已无关联习惯，丢弃不影响有效数据。
-            habitRecords: all.habitRecords.compactMap(HabitRecordDTO.init),
-            timeRecords: all.timeRecords.map(TimeRecordDTO.init),
-            scheduleItems: all.scheduleItems.map(ScheduleItemDTO.init),
-            tags: all.tags.map(TagDTO.init)
-        )
-        do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(payload)
+    /// 导出全量数据为 JSON 文件（**后台上下文执行，不阻塞 UI**），完成后主线程回调文件 URL。
+    ///
+    /// 修复（2026-10-15）：旧实现整段在主线程同步执行（全表 fetch → DTO 映射 → 编码 →
+    /// 写盘），数据量增长后会加成「点击备份 → 分享面板出现」之间的卡顿。
+    /// 现与 `DataExportService.exportAll`（CSV 导出）**逐字同构**：重活在
+    /// `bg.perform` 中完成、`DispatchQueue.main.async` 回调 —— 该形态也是本模块
+    /// 通过并发隔离检查（0 warning）的既有后台导出模式。
+    ///
+    /// - Parameter completion: 主线程回调；成功携带文件 URL，失败为 nil。
+    func exportJSON(completion: @escaping (URL?) -> Void) {
+        // store 未就绪时 fetch 抛 ObjC 异常（Swift 无法捕获）→ 先短路
+        guard persistenceController.canFetchSafely("JSON 备份导出") else {
+            DispatchQueue.main.async { completion(nil) }
+            return
+        }
 
-            let filename = "FlowTakt_Backup_\(Self.backupDateFormatter.string(from: Date())).json"
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-            try data.write(to: url, options: .atomic)
-            return url
-        } catch {
-            print("⚠️ 备份导出失败：\(error.localizedDescription)")
-            return nil
+        let bg = persistenceController.newBackgroundContext()
+        bg.perform {
+            let url = BackupExporter.makeBackupFile(in: bg)
+            DispatchQueue.main.async { completion(url) }
         }
     }
 
-    private static let backupDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyyMMdd_HHmm"
-        return f
-    }()
-
     /// 从 JSON 文件恢复（覆盖式：先清空现有数据再导入）
     func importJSON(from url: URL) -> Bool {
+        // 记录是否已发过 willReset：失败路径据此决定要不要补发 didReset 让 VM 回显数据
+        var didPostWillReset = false
         do {
             let data = try Data(contentsOf: url)
             let decoder = JSONDecoder()
@@ -267,13 +253,28 @@ final class BackupService {
                 return false
             }
 
-            // 原子性保障（审查 #1）：清空数据【之前】先校验 id 唯一性，
-            // 避免 Dictionary(uniqueKeysWithValues:) 对重复 id 触发 fatalError 且数据已清空
+            // 原子性保障（审查 #1 / 2026-10-14 P0-1）：清空数据【之前】先校验 id 唯一性，
+            // 避免 Dictionary(uniqueKeysWithValues:) 对重复 id 触发 fatalError 且数据已清空。
+            // 修复（2026-10-14 P2-10）：原先只校验 4 类，补齐 habitRecords / timeRecords /
+            // scheduleItems，与 importJSON 内所有 Dictionary 构建点保持一致。
             guard hasUniqueIDs(payload.tasks.map(\.id)),
                   hasUniqueIDs(payload.habits.map(\.id)),
                   hasUniqueIDs(payload.focusSessions.map(\.id)),
+                  hasUniqueIDs(payload.habitRecords.map(\.id)),
+                  hasUniqueIDs(payload.timeRecords.map(\.id)),
+                  hasUniqueIDs(payload.scheduleItems.map(\.id)),
                   hasUniqueIDs(payload.tags?.map(\.id) ?? []) else {
                 print("⚠️ 备份包含重复 ID，已拒绝恢复（数据未被改动）")
+                return false
+            }
+
+            // 空载荷防护（2026-10-14 P2-12）：结构合法但内容全空的 JSON（例如导出了空库、
+            // 或文件被截断成 `{}` 的合法变体）会把本地库清空并提示「恢复成功」，
+            // 用户数据被无声抹除。空备份一律拒绝。
+            if payload.tasks.isEmpty && payload.habits.isEmpty && payload.focusSessions.isEmpty
+                && payload.habitRecords.isEmpty && payload.timeRecords.isEmpty
+                && payload.scheduleItems.isEmpty && (payload.tags ?? []).isEmpty {
+                print("⚠️ 备份内容为空，已拒绝恢复（数据未被改动）")
                 return false
             }
 
@@ -292,10 +293,10 @@ final class BackupService {
 
             // 覆盖式恢复：清空现有数据（含 Achievement，避免旧成就状态残留）
             // 审查修复（2026-08-12）：先发 databaseWillReset 让各 VM 清空持有的
-            // NSManagedObject 引用，避免 clearAllData 的 context.reset() 后 UI 访问
-            // 失效对象触发 "CoreData could not fulfill a fault" 崩溃
+            // NSManagedObject 引用，避免 UI 访问失效对象触发 "CoreData could not fulfill a fault"
+            didPostWillReset = true
             NotificationCenter.default.post(name: .databaseWillReset, object: nil)
-            clearAllData()
+            try clearAllData()
 
             // 重建：先建 Task/Tag（供关联引用），再建依赖关系
             let habitByID = Dictionary(payload.habits.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -303,7 +304,7 @@ final class BackupService {
             var insertedTasks: [UUID: Task] = [:]
             for dto in payload.tasks {
                 let t = Task(context: context)
-                t.id = dto.id
+                t.storageId = dto.id
                 t.title = dto.title
                 t.notes = dto.notes
                 t.status = dto.status
@@ -326,7 +327,7 @@ final class BackupService {
             var insertedTags: [UUID: Tag] = [:]
             for dto in payload.tags ?? [] {
                 let tag = Tag(context: context)
-                tag.id = dto.id
+                tag.storageId = dto.id
                 tag.name = dto.name
                 tag.colorHex = dto.colorHex
                 tag.createdAt = dto.createdAt
@@ -344,7 +345,7 @@ final class BackupService {
 
             for dto in payload.focusSessions {
                 let s = FocusSession(context: context)
-                s.id = dto.id
+                s.storageId = dto.id
                 s.startTime = dto.startTime
                 s.endTime = dto.endTime
                 s.plannedDuration = dto.plannedDuration
@@ -363,7 +364,7 @@ final class BackupService {
             var insertedHabits: [UUID: Habit] = [:]
             for dto in payload.habits {
                 let h = Habit(context: context)
-                h.id = dto.id
+                h.storageId = dto.id
                 h.name = dto.name
                 h.descriptionText = dto.descriptionText
                 h.iconName = dto.iconName
@@ -382,7 +383,7 @@ final class BackupService {
                     continue   // 引用的习惯缺失（且无 DTO 兜底）→ 跳过该记录
                 }
                 let r = HabitRecord(context: context)
-                r.id = dto.id
+                r.storageId = dto.id
                 r.date = dto.date
                 r.count = dto.count
                 r.note = dto.note
@@ -392,7 +393,7 @@ final class BackupService {
 
             for dto in payload.timeRecords {
                 let tr = TimeRecord(context: context)
-                tr.id = dto.id
+                tr.storageId = dto.id
                 tr.startTime = dto.startTime
                 tr.endTime = dto.endTime
                 tr.duration = dto.duration
@@ -405,7 +406,7 @@ final class BackupService {
 
             for dto in payload.scheduleItems {
                 let e = ScheduleItem(context: context)
-                e.id = dto.id
+                e.storageId = dto.id
                 e.title = dto.title
                 e.startDate = dto.startDate
                 e.endDate = dto.endDate
@@ -423,16 +424,25 @@ final class BackupService {
 
             let ok = persistenceController.save()
             guard ok else {
-                // 保存失败：回滚未持久化变更，避免部分恢复
+                // 保存失败：删除与插入都在同一事务内，rollback 可完整回退到恢复前的数据
                 context.rollback()
                 print("⚠️ 备份恢复保存失败，已回滚")
+                // 修复（2026-10-14 审查 P1-2）：失败路径也必须发 databaseDidReset ——
+                // 各 VM 在 willReset 时已清空数据，不通知将停留在空白界面。
+                NotificationCenter.default.post(name: .databaseDidReset, object: nil)
                 return false
             }
+            // 成功后无需 context.reset()：删除与插入已在同一次 save 中落盘，
+            // 且 willReset 已让各 VM 释放旧对象引用（reset 反而会丢弃刚插入对象的缓存）。
             // 审查修复（2026-08-12）：恢复完成，通知各 VM 重新加载数据
             NotificationCenter.default.post(name: .databaseDidReset, object: nil)
             return true
         } catch {
+            context.rollback()
             print("⚠️ 备份恢复失败：\(error.localizedDescription)")
+            if didPostWillReset {
+                NotificationCenter.default.post(name: .databaseDidReset, object: nil)
+            }
             return false
         }
     }
@@ -452,57 +462,30 @@ final class BackupService {
     }
     // MARK: - 私有
 
-    private struct AllData {
-        let tasks: [Task]
-        let focusSessions: [FocusSession]
-        let habits: [Habit]
-        let habitRecords: [HabitRecord]
-        let timeRecords: [TimeRecord]
-        let scheduleItems: [ScheduleItem]
-        let tags: [Tag]
-    }
-
-    private func fetchAll() -> AllData {
-        let taskReq = Task.fetchRequest()
-        let sessionReq = FocusSession.fetchRequest()
-        let habitReq = Habit.fetchRequest()
-        let recordReq = HabitRecord.fetchRequest()
-        let timeReq = TimeRecord.fetchRequest()
-        let scheduleReq = ScheduleItem.fetchRequest()
-        let tagReq = Tag.fetchRequest()
-        return AllData(
-            tasks: (try? context.fetch(taskReq)) ?? [],
-            focusSessions: (try? context.fetch(sessionReq)) ?? [],
-            habits: (try? context.fetch(habitReq)) ?? [],
-            habitRecords: (try? context.fetch(recordReq)) ?? [],
-            timeRecords: (try? context.fetch(timeReq)) ?? [],
-            scheduleItems: (try? context.fetch(scheduleReq)) ?? [],
-            tags: (try? context.fetch(tagReq)) ?? []
-        )
-    }
-
-    private func clearAllData() {
-        // inMemory store（测试）对 NSBatchDeleteRequest 抛 ObjC 异常而非 error，无法用 try? 捕获，
-        // 需先按 store 类型分流：SQLite 用 batch，inMemory 逐个删除。
-        let useBatch = persistenceController.container.persistentStoreCoordinator.persistentStores
-            .contains { $0.type == NSSQLiteStoreType }
+    /// 清空全部业务数据：**仅在上下文中标记删除，不立即保存**。
+    ///
+    /// 修复（2026-10-14 审查 P0-1）：旧实现按 store 类型分流，SQLite 走
+    /// `NSBatchDeleteRequest`。batch 删除**绕过 NSManagedObjectContext、直接写入持久化
+    /// 存储**（执行即落盘），因此旧数据在 `clearAllData()` 返回时已不可逆消失；此后
+    /// 新数据的 `save()` 一旦失败，`rollback()` 只能丢弃新插入的对象 —— 用户全部数据
+    /// 丢失，界面却只提示「恢复失败」。
+    /// 现改为逐个 `context.delete`，让「删除旧数据 + 插入新数据」参与**同一次 save()**，
+    /// 失败时一次 rollback 即可完整回退。
+    private func clearAllData() throws {
         // 含 Achievement：恢复后旧成就状态会与数据不一致，一并清空（AchievementService 会自动重建默认集）
         for entity in ["Task", "FocusSession", "Habit", "HabitRecord", "TimeRecord", "ScheduleItem", "Tag", "Achievement"] {
-            let request = NSFetchRequest<NSFetchRequestResult>(entityName: entity)
-            if useBatch {
-                _ = try? context.execute(NSBatchDeleteRequest(fetchRequest: request))
-            } else if let objects = try? context.fetch(request) as? [NSManagedObject] {
-                for obj in objects { context.delete(obj) }
+            let request = NSFetchRequest<NSManagedObject>(entityName: entity)
+            // 任一实体清理失败即抛出：交由外层 catch 回滚，绝不留下「删了一半」的库
+            for object in try context.fetch(request) {
+                context.delete(object)
             }
         }
-        persistenceController.save()   // 先持久化删除（reset 会回滚未保存变更）
-        context.reset()                // 再重置 registeredObjects，避免残留引用
     }
 
     /// 当习惯记录引用的习惯缺失时，创建一个占位习惯（恢复完整性）
     private func placeholderHabit(for dto: HabitDTO) -> Habit {
         let h = Habit(context: context)
-        h.id = dto.id
+        h.storageId = dto.id
         h.name = dto.name
         h.frequency = dto.frequency
         h.targetCount = dto.targetCount
@@ -510,4 +493,64 @@ final class BackupService {
         h.updatedAt = Date()
         return h
     }
+}
+
+// MARK: - 备份文件后台构建器
+
+/// 构建全量快照并写入临时 JSON 文件（在后台 context 队列执行）。
+///
+/// 与 `DataExportService` 同型：**文件级、无显式隔离标注**（随模块默认隔离推断）。
+/// `BackupService.exportJSON` 在 `bg.perform` 闭包中直接调用本类型方法 —— 这是本模块
+/// 既有的后台导出模式（0 warning）。
+///
+/// 注意：等效逻辑若放入显式 `@MainActor` 标注的类中，会因调用点隔离检查更严格而
+/// 触发 `#ActorIsolatedCall` 警告（2026-10-15 实测），故保持独立文件级类型。
+private enum BackupExporter {
+
+    /// 构建全量快照并写入临时 JSON 文件；失败返回 nil。
+    static func makeBackupFile(in context: NSManagedObjectContext) -> URL? {
+        // 只拉取一次，避免逐实体重复扫描（审查 #9）
+        let tasks = (try? context.fetch(Task.fetchRequest())) ?? []
+        let focusSessions = (try? context.fetch(FocusSession.fetchRequest())) ?? []
+        let habits = (try? context.fetch(Habit.fetchRequest())) ?? []
+        let habitRecords = (try? context.fetch(HabitRecord.fetchRequest())) ?? []
+        let timeRecords = (try? context.fetch(TimeRecord.fetchRequest())) ?? []
+        let scheduleItems = (try? context.fetch(ScheduleItem.fetchRequest())) ?? []
+        let tags = (try? context.fetch(Tag.fetchRequest())) ?? []
+
+        let payload = BackupPayload(
+            version: BackupPayload.currentVersion,
+            exportedAt: Date(),
+            tasks: tasks.map(TaskDTO.init),
+            focusSessions: focusSessions.map(FocusSessionDTO.init),
+            habits: habits.map(HabitDTO.init),
+            // 崩溃修复（2026-10-02）：compactMap 过滤掉 habit 关系为 nil 的孤儿记录
+            // （`HabitRecordDTO.init?` 对 habit == nil 返回 nil），避免强解包触发
+            // EXC_BAD_ACCESS。孤儿记录本身已无关联习惯，丢弃不影响有效数据。
+            habitRecords: habitRecords.compactMap(HabitRecordDTO.init),
+            timeRecords: timeRecords.map(TimeRecordDTO.init),
+            scheduleItems: scheduleItems.map(ScheduleItemDTO.init),
+            tags: tags.map(TagDTO.init)
+        )
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(payload)
+
+            let filename = "FlowTakt_Backup_\(backupDateFormatter.string(from: Date())).json"
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            print("⚠️ 备份导出失败：\(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private static let backupDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd_HHmm"
+        return f
+    }()
 }

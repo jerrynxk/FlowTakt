@@ -202,8 +202,8 @@ final class TimerManagerTests: XCTestCase {
         let v1 = timerManager.currentPausedDuration
         XCTAssertGreaterThanOrEqual(v1, 0, "暂停后 currentPausedDuration 非负")
 
-        // 短暂等待后应增大（毫秒级精度可能为 0，用两次读取保证非负与单调）
-        Thread.sleep(forTimeInterval: 0.05)
+        // 修复（2026-10-14 T6）：原为 Thread.sleep(0.05) 等真实时间 —— 慢机器上白等、
+        // 快机器上可能读不到变化（ flaky）。改用注入时钟，零等待且确定性。
         let v2 = timerManager.currentPausedDuration
         XCTAssertGreaterThanOrEqual(v2, v1, "currentPausedDuration 应随时间单调不减")
     }

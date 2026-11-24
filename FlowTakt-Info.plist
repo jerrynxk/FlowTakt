@@ -58,10 +58,25 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<!-- 本 App 仅使用系统标准加密（HTTPS/CloudKit 传输），符合豁免条件，预声明免审核问询 -->
+	<false/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>MinimumOSVersion</key>
 	<string>$(IPHONEOS_DEPLOYMENT_TARGET)</string>
+	<!-- 灵动岛 / 锁屏 Live Activity（2026-10-14）：缺此键时 Activity.request 直接抛错，
+	     专注计时无法在灵动岛与锁屏展示。见 Services/LiveActivityManager.swift。 -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSUserActivityTypes</key>
+	<!-- 深链/Handoff/Spotlight 预留：当前走 flowtakt:// URL Scheme，后续接入
+	     NSUserActivity（Universal Links / Spotlight 索引）时需在此登记 activity type -->
+	<array>
+		<string>com.flowtakt.focus-session</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -75,6 +90,11 @@
 	<array>
 		<string>audio</string>
 		<string>fetch</string>
+		<!-- iCloud 同步（重置数据库的云端清除、数据回流）依赖 CloudKit 静默推送。
+		     缺失该项时系统日志报 "CloudKit push notifications require the
+		     'remote-notification' background mode"，推送被静默丢弃，
+		     表现为「改了数据另一台设备收不到」。必须与 aps-environment 成对声明。 -->
+		<string>remote-notification</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict>

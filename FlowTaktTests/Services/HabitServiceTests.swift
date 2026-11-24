@@ -226,7 +226,7 @@ final class HabitServiceTests: XCTestCase {
         for i in 0..<3 {
             let date = calendar.date(byAdding: .day, value: -i, to: today)!.addingTimeInterval(3600)
             let record = HabitRecord(context: persistence.viewContext)
-            record.id = UUID()
+            record.storageId = UUID()
             record.date = date
             record.count = 1
             record.note = nil

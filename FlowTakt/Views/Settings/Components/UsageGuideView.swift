@@ -63,6 +63,11 @@ struct UsageGuideView: View {
         .navigationTitle(L10n.shared.使用说明)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        // 滚动统一调整（2026-11-02）：长说明页禁用弹性 + 柔化撞停减速
+        .disableBounce()
+        // 修复（2026-10-15 审查）：父级 SettingsView 统一页头规范后隐藏导航栏，
+        // pushed 子页必须显式恢复，否则「确定」按钮所在工具栏不可见
+        .toolbar(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(L10n.shared.确定) {
@@ -87,8 +92,12 @@ private struct GuideRow: View {
                 Image(systemName: icon)
                     .foregroundColor(color)
                     .font(.title3)
+                    // 无障碍补齐（2026-11-02）：装饰图标不单独朗读（否则读成「时钟箭头 专注」）
+                    .accessibilityHidden(true)
                 Text(title)
                     .font(.headline)
+                    // 无障碍补齐（2026-11-02）：模块名补二级标题，长说明页可按标题跳转
+                    .accessibilityHeading(.h2)
             }
 
             Text(content)

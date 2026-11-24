@@ -4,6 +4,7 @@ import SwiftUI
 
 struct TaskCreateView: View {
     @EnvironmentObject var taskViewModel: TaskViewModel
+    @EnvironmentObject var tagViewModel: TagViewModel
     @EnvironmentObject var l10n: L10n
     @Environment(\.dismiss) var dismiss
 
@@ -15,6 +16,8 @@ struct TaskCreateView: View {
     @State private var dueDate: Date = Date().addingTimeInterval(86400)
     @State private var hasRecurrence: Bool = false
     @State private var recurrenceRule: String = "none"
+    /// 选中的标签 id 集合（保存时经 TagViewModel 解析为 Tag，写入 task.tags）
+    @State private var selectedTagIDs: Set<UUID> = []
 
     private let priorityValues: [Int16] = [1, 2, 3]
     private let recurrenceOptions: [(String, String, String)] = [
@@ -56,6 +59,8 @@ struct TaskCreateView: View {
                         }
                         TextEditor(text: $notes)
                             .frame(minHeight: 80)
+                            // 无障碍（2026-10-14）：TextEditor 补标签（占位文案是独立元素，不会自动成为输入框标签）
+                            .accessibilityLabel(L10n.shared.备注)
                     }
                 }
 
@@ -65,9 +70,16 @@ struct TaskCreateView: View {
                         HStack {
                             Image(systemName: "timer")
                                 .foregroundColor(.focusRed)
+                                // 无障碍补齐（2026-11-02）：装饰图标不单独朗读
+                                .accessibilityHidden(true)
                             Text(L10n.shared.estimatedPomodoros(Int(estimatedPomodoros)))
                         }
                     }
+                }
+
+                // MARK: 标签（用户反馈 2026-11-19：打通任务↔标签关联，补创建入口）
+                Section(L10n.shared.标签) {
+                    TagEditorView(selectedTagIDs: $selectedTagIDs)
                 }
 
                 // MARK: 优先级
@@ -117,6 +129,8 @@ struct TaskCreateView: View {
             }
             .navigationTitle(L10n.shared.新建任务)
             .navigationBarTitleDisplayMode(.inline)
+            // 滚动统一调整（2026-11-02）：禁用弹性 + 柔化撞停减速
+            .disableBounce()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L10n.shared.取消) {
@@ -141,14 +155,22 @@ struct TaskCreateView: View {
     private func saveTask() {
         guard !title.trimmingCharacters(in: .whitespaces).isEmpty else { return }
 
-        taskViewModel.createTask(
+        let newTask = taskViewModel.createTask(
             title: title.trimmingCharacters(in: .whitespaces),
-            notes: notes.trimmingCharacters(in: .whitespaces).isEmpty ? nil : notes,
+            // 修复（P2-40）：与 TaskDetailView 统一 —— 判空与入库用同一份 trim 结果
+            notes: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nil
+                : notes.trimmingCharacters(in: .whitespacesAndNewlines),
             estimatedPomodoros: estimatedPomodoros,
             priority: priority,
             dueDate: hasDueDate ? dueDate : nil,
             recurrenceRule: hasRecurrence ? recurrenceRule : nil
         )
+
+        // 保存后挂标签（全量替换语义；标签对象经 TagViewModel 解析，走 Service 层写入）
+        if let newTask, !selectedTagIDs.isEmpty {
+            tagViewModel.setTags(tagViewModel.resolveTags(ids: selectedTagIDs), on: newTask)
+        }
     }
 }
 
@@ -157,4 +179,9 @@ struct TaskCreateView: View {
 #Preview {
     TaskCreateView()
         .environmentObject(AppDependency().taskViewModel)
+        .environmentObject(TagViewModel(
+            tagService: TagService(persistenceController: PersistenceController.preview),
+            persistenceController: PersistenceController.preview
+        ))
+        .environmentObject(L10n.shared)
 }

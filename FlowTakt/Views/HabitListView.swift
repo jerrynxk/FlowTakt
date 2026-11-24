@@ -9,26 +9,26 @@ struct HabitListView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if habitViewModel.habits.isEmpty {
-                    emptyState
-                } else {
-                    habitList
+            VStack(spacing: 0) {
+                // 标题行：「习惯」大标题 + 「+」新建按钮（同一行），紧贴顶部分段控件（2026-10-14）。
+                // 原先「+」挂在导航栏 primaryAction、大标题由 .large 模式渲染，
+                // 系统把按钮渲染在标题上方并额外预留导航栏高度，视觉上下分离；
+                // 现改为内容区自绘标题行，与「任务」页（TaskListView）保持同构。
+                titleRow
+
+                Group {
+                    if habitViewModel.habits.isEmpty {
+                        emptyState
+                    } else {
+                        habitList
+                    }
                 }
             }
             .background(Color.appBackground)
             .navigationTitle(L10n.shared.习惯)
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showCreateSheet = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .fontWeight(.semibold)
-                    }
-                }
-            }
+            // 隐藏系统导航栏，标题行成为内容首项、紧贴顶部分段控件。
+            // 保留 navigationTitle 供 VoiceOver / 深链标题使用。
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $showCreateSheet) {
                 CreateHabitSheetView { name, iconName, colorHex, frequency, targetCount in
                     habitViewModel.createHabit(
@@ -41,6 +41,34 @@ struct HabitListView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Title Row
+
+    /// 标题行：「习惯」大标题 + 「+」新建按钮（同一行）。
+    /// 规格对齐 TaskListView.titleRow：largeTitle.bold、水平边距 16、按钮 44×44 命中区、focusRed 着色。
+    private var titleRow: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(L10n.shared.习惯)
+                .font(.largeTitle.weight(.bold))
+                // 无障碍（2026-10-14）：大标题标记为一级标题（VoiceOver 转子可按标题跳转）
+                .accessibilityHeading(.h1)
+            Spacer(minLength: 12)
+            Button {
+                showCreateSheet = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.focusRed)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.shared.新建习惯)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 4)
     }
 
     // MARK: - Habit List
@@ -63,7 +91,9 @@ struct HabitListView: View {
                     todayRecords: todayRecordsByHabit[habit.id] ?? []
                 )
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    // 修复（2026-10-14 P2）：删除习惯会级联清空全部打卡记录，全滑删除风险太高 →
+        // 改为必须滑动到位并点「删除」按钮才生效
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {
                             withAnimation {
                                 habitViewModel.deleteHabit(habit)
@@ -76,6 +106,8 @@ struct HabitListView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+        // 滚动统一调整（2026-11-02）：禁用弹性 + 柔化撞停减速
+        .disableBounce()
     }
 
     // MARK: - Empty State
@@ -87,6 +119,8 @@ struct HabitListView: View {
             Image(systemName: "star.circle")
                 .font(.system(size: 48))
                 .foregroundColor(.secondary.opacity(0.5))
+                // 无障碍（2026-10-14）：空状态装饰图标不单独朗读
+                .accessibilityHidden(true)
 
             Text(L10n.shared.noHabits)
                 .font(.title3)
@@ -279,4 +313,5 @@ private struct HabitRowView: View {
 #Preview {
     HabitListView()
         .environmentObject(AppDependency().habitViewModel)
+        .environmentObject(L10n.shared)
 }

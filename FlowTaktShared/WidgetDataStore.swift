@@ -1,4 +1,5 @@
 import Foundation
+import WidgetKit
 
 // MARK: - 小组件共享数据模型
 
@@ -25,7 +26,7 @@ struct WidgetSnapshot: Codable {
 /// 主 App 在提醒数据变更后写入；Widget 的 TimelineProvider 读取并展示。
 struct WidgetDataStore {
     /// App Group 标识（须与 entitlements 中一致）
-    /// 同步更新 FlowTakt/Utils/Constants.swift 中的 appGroupIdentifier
+    /// 同步更新 本文件顶部的 appGroupID（App 与 Widget 两侧各自声明，务必保持一致）
     static let appGroupID = "group.com.flowtakt"
     /// 快照存储键
     static let snapshotKey = "flowtakt_reminder_snapshot"
@@ -71,10 +72,15 @@ struct WidgetDataStore {
     }
 
     /// 写入今日专注摘要到 App Group
+    ///
+    /// 修复（2026-10-14 审查 P1-14）：写入后必须主动刷新 Widget 时间线 ——
+    /// 锁屏「今日专注」小组件原本只在「日程提醒变更」与「提醒开关切换」时被 reload，
+    /// 完成番茄钟后摘要已更新但组件不重绘，最长要等到次日 00:00 或下次冷启动才更新。
     static func writeFocusSummary(_ summary: FocusSummary) {
         do {
             let data = try JSONEncoder().encode(summary)
             UserDefaults(suiteName: appGroupID)?.set(data, forKey: focusSummaryKey)
+            WidgetCenter.shared.reloadAllTimelines()
         } catch {
             print("⚠️ WidgetDataStore 写入焦点摘要失败：\(error.localizedDescription)")
         }

@@ -16,14 +16,35 @@ protocol HabitServiceProtocol {
     func recalculateStreak(for habit: Habit)
 }
 
+// MARK: - 习惯频率判据收口（2026-10-15 审查 P2-S4）
+// "daily"/"weekly"/"monthly" 此前以裸字符串散落在 Service/ViewModel/View 三层，
+// 统一以本 enum 的 rawValue 为唯一真值源（CoreData 存库字符串不变，无迁移成本）。
+
+enum HabitFrequency: String {
+    case daily
+    case weekly
+    case monthly
+}
+
 // MARK: - 习惯服务实现
 
 @MainActor
 final class HabitService: HabitServiceProtocol {
     private let persistenceController: PersistenceController
 
+    /// 错误回调：供 ViewModel 层监听 Service 内部错误（2026-10-15 审查 P1-007 接线）
+    var onError: ((Error) -> Void)?
+
     private var viewContext: NSManagedObjectContext {
         persistenceController.viewContext
+    }
+    /// save 失败统一上报（判据收口，2026-10-15 审查 P1-001）：
+    /// 所有写路径经此检查，store 未就绪/保存失败时不再静默丢弃。
+    func saveAndReport() {
+        if !persistenceController.save() {
+            onError?(AppError.coreDataSaveFailed(NSError(domain: "FlowTakt.HabitService",
+                                                         code: NSFileWriteUnknownError)))
+        }
     }
 
     init(persistenceController: PersistenceController) {
@@ -39,7 +60,7 @@ final class HabitService: HabitServiceProtocol {
         targetCount: Int16
     ) -> Habit {
         let habit = Habit(context: viewContext)
-        habit.id = UUID()
+        habit.storageId = UUID()
         habit.name = name
         habit.descriptionText = descriptionText
         habit.iconName = iconName
@@ -50,7 +71,7 @@ final class HabitService: HabitServiceProtocol {
         habit.longestStreak = 0
         habit.createdAt = Date()
         habit.updatedAt = Date()
-        persistenceController.save()
+        saveAndReport()
         return habit
     }
 
@@ -70,7 +91,7 @@ final class HabitService: HabitServiceProtocol {
         if let frequency = frequency { habit.frequency = frequency }
         if let targetCount = targetCount { habit.targetCount = targetCount }
         habit.updatedAt = Date()
-        persistenceController.save()
+        saveAndReport()
     }
 
     /// 删除习惯并级联删除其全部打卡记录。
@@ -89,19 +110,19 @@ final class HabitService: HabitServiceProtocol {
             viewContext.delete(record)
         }
         viewContext.delete(habit)
-        persistenceController.save()
+        saveAndReport()
     }
 
     @discardableResult
     func checkIn(habit: Habit, count: Int16, note: String?) -> HabitRecord {
         let record = HabitRecord(context: viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.date = Date()
         record.count = count
         record.note = note
         record.createdAt = Date()
         record.habit = habit
-        persistenceController.save()
+        saveAndReport()
         recalculateStreak(for: habit)
         return record
     }
@@ -114,13 +135,14 @@ final class HabitService: HabitServiceProtocol {
         guard !record.isDeleted, record.managedObjectContext != nil else { return }
         let habit = record.habit
         viewContext.delete(record)
-        persistenceController.save()
+        saveAndReport()
         if let habit {
             recalculateStreak(for: habit)
         }
     }
 
     func fetchAllHabits() -> [Habit] {
+        guard persistenceController.canFetchSafely("HabitService.fetchAllHabits") else { return [] }
         let request = Habit.fetchRequest()
         request.sortDescriptors = [NSSortDescriptor(keyPath: \Habit.createdAt, ascending: false)]
         do {
@@ -132,6 +154,7 @@ final class HabitService: HabitServiceProtocol {
     }
 
     func fetchHabitRecords(habit: Habit, from date: Date, to endDate: Date) -> [HabitRecord] {
+        guard persistenceController.canFetchSafely("HabitService.fetchHabitRecords") else { return [] }
         let request = HabitRecord.fetchRequest()
         // 半开区间 [date, endDate)
         request.predicate = NSPredicate(
@@ -150,6 +173,7 @@ final class HabitService: HabitServiceProtocol {
     }
 
     func fetchRecords(from startDate: Date, to endDate: Date) -> [HabitRecord] {
+        guard persistenceController.canFetchSafely("HabitService.fetchRecords") else { return [] }
         let request = HabitRecord.fetchRequest()
         // 半开区间 [startDate, endDate)
         request.predicate = NSPredicate(
@@ -170,19 +194,19 @@ final class HabitService: HabitServiceProtocol {
         let records = habit.records
         guard !records.isEmpty else {
             habit.currentStreak = 0
-            persistenceController.save()
+            saveAndReport()
             return
         }
 
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
 
-        // 根据频率确定周期组件
+        // 根据频率确定周期组件（判据收口：走 HabitFrequency.rawValue，见文件头注释）
         let component: Calendar.Component
         switch habit.frequency {
-        case "weekly":
+        case HabitFrequency.weekly.rawValue:
             component = .weekOfYear
-        case "monthly":
+        case HabitFrequency.monthly.rawValue:
             component = .month
         default:
             component = .day
@@ -202,20 +226,32 @@ final class HabitService: HabitServiceProtocol {
             }
         }
 
+        // 修复（2026-10-14 审查 P1-8）：今天尚未打卡（或用户刚撤销今日打卡）时，
+        // 不应把连续天数直接清零 —— 应从昨天/上一个周期起算。
+        // 例：连续 30 天的每日习惯，误触打卡按钮撤销今日打卡后旧实现显示 0 天。
+        // 与 `AchievementService.computeStreak` 的容错语义对齐（判据收口到同一口径）。
+        if !meetsTarget(records: records, habit: habit,
+                        periodStart: currentPeriodStart, calendar: calendar, component: component),
+           let previous = calendar.date(byAdding: component, value: -1, to: currentPeriodStart) {
+            currentPeriodStart = previous
+        }
+
+        // 修复（2026-10-14 P2）：预聚合 —— 原实现每个周期都遍历一次全部 records
+        // （O(周期数 × 记录数)），长 streak 用户每次打卡都会放大。
+        var aggregatedTotals: [Date: Int32] = [:]
+        for record in records {
+            let key = periodStart(of: record.date, calendar: calendar, component: component)
+            aggregatedTotals[key, default: 0] += Int32(record.count)
+        }
+
         var streak: Int16 = 0
         let maxIterations: Int16 = 10000
 
         while streak < maxIterations {
             // 半开区间 [currentPeriodStart, nextPeriodStart)：避免 -1s 边界漏掉周期最后一秒的打卡
-            guard let nextPeriodStart = calendar.date(byAdding: component, value: 1, to: currentPeriodStart) else {
-                break
-            }
+            let total = aggregatedTotals[currentPeriodStart] ?? 0
 
-            let periodTotal = records
-                .filter { $0.date >= currentPeriodStart && $0.date < nextPeriodStart }
-                .reduce(0) { $0 + $1.count }
-
-            if periodTotal >= habit.targetCount {
+            if total >= habit.targetCount {
                 streak += 1
                 guard let previousStart = calendar.date(
                     byAdding: component, value: -1, to: currentPeriodStart
@@ -230,6 +266,37 @@ final class HabitService: HabitServiceProtocol {
         if streak > habit.longestStreak {
             habit.longestStreak = streak
         }
-        persistenceController.save()
+        saveAndReport()
+    }
+
+    /// 某日期所属周期的起始日（与 recalculateStreak 的周期口径一致）
+    private func periodStart(of date: Date, calendar: Calendar,
+                             component: Calendar.Component) -> Date {
+        switch component {
+        case .weekOfYear:
+            let comps = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+            return calendar.date(from: comps) ?? calendar.startOfDay(for: date)
+        case .month:
+            let comps = calendar.dateComponents([.year, .month], from: date)
+            return calendar.date(from: comps) ?? calendar.startOfDay(for: date)
+        default:
+            return calendar.startOfDay(for: date)
+        }
+    }
+
+    /// 单个周期内的打卡总数（半开区间 [start, next)，避免 -1s 边界漏掉周期最后一秒）
+    private func periodTotal(records: Set<HabitRecord>, periodStart: Date,
+                             calendar: Calendar, component: Calendar.Component) -> Int16 {
+        guard let next = calendar.date(byAdding: component, value: 1, to: periodStart) else { return 0 }
+        return records
+            .filter { $0.date >= periodStart && $0.date < next }
+            .reduce(0) { $0 + $1.count }
+    }
+
+    /// 该周期是否已达标（用于「今天未打卡则从上一周期起算」的容错判断）
+    private func meetsTarget(records: Set<HabitRecord>, habit: Habit, periodStart: Date,
+                             calendar: Calendar, component: Calendar.Component) -> Bool {
+        periodTotal(records: records, periodStart: periodStart,
+                    calendar: calendar, component: component) >= habit.targetCount
     }
 }

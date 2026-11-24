@@ -200,12 +200,12 @@ final class L10n: ObservableObject {
                 "Start a focus session with a tap. Link a task to track what you're working on. "
                 + "Focus sessions are divided into Pomodoro intervals with short and long breaks. "
                 + "You can pause or skip phases at any time. "
-                + "White noise is available to help you stay concentrated."
+                + "Set your white noise preference and it plays automatically when a session starts."
             ) : (
                 "点击即可开始专注。关联任务可记录当前正在做什么。\n"
                 + "专注会话按番茄钟分段，间隔短休息和长休息。\n"
                 + "随时可以暂停或跳过当前阶段。\n"
-                + "支持白噪音辅助集中注意力。"
+                + "可预设白噪音偏好，开始专注时自动播放。"
             )
 
         case "task":
@@ -248,23 +248,25 @@ final class L10n: ObservableObject {
         case "timer":
             return isEnglish ? (
                 "A free-running timer for tracking activity duration. "
-                + "Tap start to begin recording — no preset duration needed. "
-                + "Optionally link a task and mark as billable. "
+                + "Open the Focus tab and switch to Stopwatch mode — tap start, no preset duration needed. "
+                + "You can link a task or tag. "
                 + "Tap stop when done and the duration is saved to your records."
             ) : (
                 "自由计时器，用于记录活动时长。\n"
-                + "无需预设时长，点击即可开始计时。\n"
-                + "可选关联任务并标记为计费项目。\n"
+                + "在专注页切换到「正计时」模式，点击即可开始，无需预设时长。\n"
+                + "可关联任务或标签。\n"
                 + "完成后点击停止，时长自动保存到记录。"
             )
 
         case "stats":
             return isEnglish ? (
                 "View your daily focus summary, weekly trend, and total points earned. "
+                + "Break down time by tag with All / Year / Month / Week / Custom ranges, including total focus time. "
                 + "Each completed Pomodoro earns you points. "
                 + "Unlock achievements by reaching milestones in focus time, streaks, and points."
             ) : (
                 "查看每日专注概览、本周趋势和累计积分。\n"
+                + "按标签查看累计总时长，支持全部 / 年 / 月 / 周 / 自定义区间。\n"
                 + "每完成一个番茄钟都能获得积分。\n"
                 + "达到专注时长、连续打卡或积分里程碑时解锁成就。"
             )
@@ -305,6 +307,8 @@ final class L10n: ObservableObject {
 
     var 今日概览: String { isEnglish ? "Today's Overview" : "今日概览" }
     var 本周趋势: String { isEnglish ? "Weekly Trend" : "本周趋势" }
+    /// 专注工具条「今日概览」弹层内近 7 天柱状图标题（2026-11-22 重设计）
+    var 近7天专注: String { isEnglish ? "Last 7 Days" : "近 7 天专注" }
     var 一: String { isEnglish ? "Mon" : "一" }
     var 二: String { isEnglish ? "Tue" : "二" }
     var 三: String { isEnglish ? "Wed" : "三" }
@@ -338,8 +342,6 @@ final class L10n: ObservableObject {
     var 已计划: String { isEnglish ? "Planned" : "已计划" }
     var 已完成: String { isEnglish ? "Completed" : "已完成" }
     var 活跃: String { isEnglish ? "Active" : "活跃" }
-    var 已中断: String { isEnglish ? "Interrupted" : "已中断" }
-    var 已放弃: String { isEnglish ? "Abandoned" : "已放弃" }
     var 进度: String { isEnglish ? "Progress" : "进度" }
     var 状态: String { isEnglish ? "Status" : "状态" }
     var 无任务: String { isEnglish ? "No Task" : "无任务" }
@@ -391,7 +393,13 @@ final class L10n: ObservableObject {
     var 正在计时: String { isEnglish ? "Timing..." : "正在计时" }
     var 准备就绪: String { isEnglish ? "Ready" : "准备就绪" }
     var 已暂停: String { isEnglish ? "Paused" : "已暂停" }
+    /// 正计时暂停态说明（用户反馈 2026-11-17）
+    var 暂停段不计入时长: String { isEnglish ? "Paused time is not counted" : "暂停段不计入时长" }
     var 白噪音: String { isEnglish ? "White Noise" : "白噪音" }
+    /// 白噪音自绘弹层的读屏关闭入口（2026-11-22 审查 H1）
+    var 关闭菜单: String { isEnglish ? "Close Menu" : "关闭菜单" }
+    /// 白噪音弹层总开关行的读屏名称（与第一种音效「白噪音」区分，2026-11-22 审查 M2）
+    var 白噪音开关: String { isEnglish ? "White Noise Toggle" : "白噪音开关" }
     var 白噪音开: String { isEnglish ? "White Noise On" : "白噪音 开" }
     var 白噪音关: String { isEnglish ? "White Noise Off" : "白噪音 关" }
     var 白噪音类型: String { isEnglish ? "Noise Type" : "白噪音类型" }
@@ -399,6 +407,16 @@ final class L10n: ObservableObject {
     var 白噪音类型雨: String { isEnglish ? "Rain" : "雨声" }
     var 白噪音类型溪流: String { isEnglish ? "Stream" : "溪流" }
     var 白噪音类型咖啡厅: String { isEnglish ? "Cafe" : "咖啡厅" }
+    /// 新增环境音类型（2026-10-30，取自 Mixkit，免费商用无需署名）
+    var 白噪音类型海浪: String { isEnglish ? "Ocean" : "海浪" }
+    var 白噪音类型森林: String { isEnglish ? "Forest" : "森林" }
+    var 白噪音类型夜晚: String { isEnglish ? "Night" : "夜晚" }
+    var 白噪音类型风: String { isEnglish ? "Breeze" : "微风" }
+    /// 环境音抽屉菜单（2026-10-30：横向胶囊改为底部抽屉选择）
+    var 环境音库: String { isEnglish ? "Ambient Sounds" : "环境音库" }
+    var 选择环境音提示: String { isEnglish ? "Tap to choose a sound" : "轻点选择音效" }
+    var 当前已选环境音: String { isEnglish ? "Currently selected" : "当前已选" }
+    var 选择此环境音: String { isEnglish ? "Select this sound" : "选择此音效" }
 
     // MARK: - 沉浸 Hero 单页（v1.3 UI 升级：phase 标题 / 副标题 / 时长 chip）
     var 深度聚焦: String { isEnglish ? "Deep Focus" : "深度聚焦" }
@@ -408,7 +426,12 @@ final class L10n: ObservableObject {
     var 彻底放空: String { isEnglish ? "Full Reset" : "彻底放空" }
     var 彻底放空副标题: String { isEnglish ? "Put the screen down, take a walk" : "放下屏幕，去走走或打个盹" }
     // 审查修复（2026-08-12 v1.3.4l）：时长预设 15/25/45 三个键删除（专注 Tab 已取消入口，仅保留「自定义」）
-    var 时长预设自定义: String { isEnglish ? "Custom…" : "自定义…" }
+    // 无障碍修复（2026-10-15 AX5 实测）：原文案「自定义…」的省略号在 AX5 大字体下
+    // 与"文字被截断"视觉混淆（实测 chip 宽 85pt，三字需约 110pt）——去掉文案省略号，
+    // 由 Menu 的展开箭头表达"有更多选项"，语义更准确且不再与截断混淆。
+    var 时长预设自定义: String { isEnglish ? "Custom" : "自定义" }
+    /// 专注页工具条「时长」按钮标题（2026-11-22 页面简化）
+    var 时长: String { isEnglish ? "Duration" : "时长" }
     // 无障碍修复（2026-08-12）：时长 Menu 提示
     var 选择后立即开始专注: String { isEnglish ? "Starts immediately after selection" : "选择后立即开始" }
     var 长按时长手势提示: String { isEnglish ? "Long press to give up" : "长按放弃本次" }
@@ -484,6 +507,41 @@ final class L10n: ObservableObject {
     var 绿色: String { isEnglish ? "Green" : "绿色" }
     var 橙色: String { isEnglish ? "Orange" : "橙色" }
     var 紫色: String { isEnglish ? "Purple" : "紫色" }
+    // 无障碍补齐（2026-10-14）：习惯配色选择器需要粉色/青色读屏名
+    var 粉色: String { isEnglish ? "Pink" : "粉色" }
+    var 青色: String { isEnglish ? "Teal" : "青色" }
+
+    // MARK: - 无障碍补齐（2026-10-14）
+    /// 专注页阶段切换 Picker 的读屏标签（段位自解释，标签说明控件用途）
+    var 阶段: String { isEnglish ? "Phase" : "阶段" }
+
+    // MARK: - 无障碍补齐（2026-11-02）
+    /// 全屏遮罩类视图的关闭手势提示（VoiceOver 无法点击背景遮罩）
+    var 双击关闭: String { isEnglish ? "Double-tap to close" : "双击关闭" }
+    /// 计时页「计时中」已用时长（如 "已计时 1 小时 5 分钟 30 秒"）
+    func 已计时(_ seconds: Int) -> String {
+        let total = max(0, seconds)
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let secs = total % 60
+        if hours > 0 {
+            return isEnglish
+                ? "Elapsed \(hours)h \(minutes)m \(secs)s"
+                : "已计时 \(hours) 小时 \(minutes) 分 \(secs) 秒"
+        }
+        return isEnglish
+            ? "Elapsed \(minutes) minutes \(secs) seconds"
+            : "已计时 \(minutes) 分 \(secs) 秒"
+    }
+    /// 热力图图例说明（颜色深浅 = 打卡密度，色块本身对读屏无信息）
+    var 热力图图例说明: String {
+        isEnglish ? "Legend: lighter to darker means fewer to more check-ins"
+                  : "图例：颜色由浅到深，表示打卡次数由少到多"
+    }
+    /// 任务分解圆环的汇总读屏文案
+    func 任务总数(_ count: Int) -> String {
+        isEnglish ? "\(count) tasks in total" : "共 \(count) 个任务"
+    }
 
     // MARK: - 统计
     var 统计: String { isEnglish ? "Stats" : "统计" }
@@ -509,6 +567,71 @@ final class L10n: ObservableObject {
     var 版本: String { isEnglish ? "Version" : "版本" }
     var 语言: String { isEnglish ? "Language" : "语言" }
 
+    // MARK: - 推荐应用（设置页「我的其他应用」）
+    var 我的其他应用: String { isEnglish ? "More Apps by Developer" : "我的其他应用" }
+    var 获取: String { isEnglish ? "Get" : "获取" }
+    // 推荐文案（用户指定，2026-10-29）：PinDial 卖点
+    var pindial推荐简介: String {
+        isEnglish
+            ? "No jailbreak, no TrollStore — Chinese T9 search for iPhone's native dialer. No ads · fully offline"
+            : "无需越狱 · 无需巨魔 · 让 iPhone 原生拨号盘支持中文 T9 搜索，无广告 · 不联网"
+    }
+    var 打开AppStore查看PinDial: String { isEnglish ? "Opens the App Store to view PinDial" : "打开 App Store 查看 PinDial" }
+    // 应用内商店页加载失败时的兜底提示（2026-10-29 修复：改为询问而非自动跳转）
+    var 商店页加载失败标题: String { isEnglish ? "Store Page Unavailable" : "商店页加载失败" }
+    var 商店页加载失败消息: String {
+        isEnglish
+            ? "PinDial's App Store page couldn't load in-app. Open it in Safari instead?"
+            : "PinDial 的 App Store 页面暂时无法在应用内加载，是否改用系统浏览器打开？"
+    }
+    var 前往AppStore: String { isEnglish ? "Open App Store" : "前往 App Store" }
+
+    // MARK: - 推荐应用详情（PinDial 详情页，2026-10-29）
+    var pindial详情页标题: String { isEnglish ? "PinDial" : "PinDial" }
+    var pindial简介段落: String {
+        isEnglish
+            ? "PinDial is a fully on-device contact enhancer. It doesn't change the system or install plugins — it simply writes contacts' pinyin into the system nickname field, so iOS's native dialer supports Chinese T9 search. Type pinyin initials, full pinyin, substrings, or company pinyin, and matches appear instantly."
+            : "PinDial 是一款纯本地运行的通讯录增强工具。它不改变系统、不安装插件，只是把联系人的拼音写入系统昵称字段，使 iOS 原生拨号盘支持中文 T9 搜索。输入拼音首字母、全拼、子串、公司拼音，都可快速匹配到。"
+    }
+    var pindial功能亮点: String { isEnglish ? "Highlights" : "功能亮点" }
+    var pindial功能T9标题: String { isEnglish ? "Chinese T9 Search" : "中文 T9 搜索" }
+    var pindial功能T9内容: String {
+        isEnglish
+            ? "In the system dialer, type pinyin initials (e.g. lss → 刘先生的手机), full pinyin, or digits to match contacts in milliseconds — no more scrolling through the address book."
+            : "在系统拨号盘直接输入拼音首字母（如 lss → 刘先生的手机）、全拼或电话号码，毫秒级匹配联系人，告别逐页翻找通讯录。"
+    }
+    var pindial功能越狱标题: String { isEnglish ? "No Jailbreak, No TrollStore" : "无需越狱 · 无需巨魔" }
+    var pindial功能越狱内容: String {
+        isEnglish
+            ? "Built entirely on public system APIs — no jailbreak, no TrollStore, and no system files modified. Safe, with zero side effects."
+            : "完全基于系统公开能力实现，不需要越狱、不需要 TrollStore，也不会修改任何系统文件，安全无副作用。"
+    }
+    var pindial功能隐私标题: String { isEnglish ? "Privacy First" : "隐私优先" }
+    var pindial功能隐私内容: String {
+        isEnglish
+            ? "No network access, no uploads, no address-book permission requested. Every lookup happens on your device — your contacts never leave it."
+            : "不联网、不上传、不索取通讯录权限。所有检索都在本机完成，你的联系人数据哪也不去。"
+    }
+    var pindial功能原生标题: String { isEnglish ? "Native Experience" : "原生体验" }
+    var pindial功能原生内容: String {
+        isEnglish
+            ? "Reuses the system dialer you already know — zero learning curve. Look, feel, and behavior stay exactly like iOS."
+            : "复用你早已熟悉的系统拨号盘，零学习成本；外观、手感与系统完全一致。"
+    }
+    var pindial功能拨号盘标题: String { isEnglish ? "Stunning T9 Dialer" : "炫酷 T9 拨号盘" }
+    var pindial功能拨号盘内容: String {
+        isEnglish
+            ? "Enable it in Settings → T9 Dialer Mode to get a full-screen dialer built for Chinese — type pinyin initials or digits to match (e.g. ZS for 张三, 5464 for 李明). Multi-number contacts expand automatically with location shown. Fully offline, ready to use. Appearance is customizable: 8 solid and gradient themes, or pick an image from your album."
+            : "在「设置 - T9 拨号盘模式」一键开启，获得一个专为中文优化的全屏拨号盘——输入拼音首字母或数字即可匹配（如「张三」按 ZS、「李明」按 5464），多号码联系人自动展开并显示归属地，完全离线、点开即用。外观还能自定义：8 款纯色与渐变主题，或从相册选图自由裁切。"
+    }
+    var pindial功能小组件标题: String { isEnglish ? "Widget Dialing" : "小组件拨号" }
+    var pindial功能小组件内容: String {
+        isEnglish
+            ? "Pin the T9 dialer to your Home Screen (large and medium sizes) and dial in one tap — no need to open the app. Favorite up to 4 contacts for quick dialing, or it auto-shows recent calls when empty. The digits you type and call history sync in real time between the app and the widget, with live candidates as you type."
+            : "把 T9 拨号盘搬上主屏幕（大号、中号两种版式），点一下就能拨号，无需先打开 App。可收藏 4 位常用联系人做快速拨打，收藏为空时自动显示最近拨打；输入的数字与拨号记录在 App 与组件间实时同步，边输边出候选。"
+    }
+    var pindial获取按钮: String { isEnglish ? "Get PinDial" : "获取 PinDial" }
+
     // MARK: - 外观
     var 外观: String { isEnglish ? "Appearance" : "外观" }
     var 颜色主题: String { isEnglish ? "Color Theme" : "颜色主题" }
@@ -520,9 +643,15 @@ final class L10n: ObservableObject {
     var 同步与数据: String { isEnglish ? "Sync & Data" : "同步与数据" }
     var iCloud同步: String { isEnglish ? "iCloud Sync" : "iCloud 同步" }
     var 立即同步: String { isEnglish ? "Sync Now" : "立即同步" }
-    var iCloud同步说明: String { isEnglish ? "Enable iCloud to sync data across devices via CloudKit. Requires app restart to take effect." : "开启 iCloud 同步后，需重新启动 App 方可生效，数据将通过 CloudKit 在多台设备间同步" }
-    var 同步已触发: String { isEnglish ? "Sync request sent — changes will sync to iCloud" : "同步请求已发送" }
+    /// 手动同步真实结果文案（消除"同步请求已发送"假说明）
+    var 同步结果已保存: String { isEnglish ? "Local changes saved — uploading to iCloud" : "本地变更已保存，正在上传至 iCloud" }
+    var 同步结果无本地变更: String { isEnglish ? "No local changes. Other devices' updates arrive automatically." : "无本地变更；其它设备的更新会自动导入" }
+    var 同步结果账户不可用: String { isEnglish ? "iCloud account unavailable — sign in and retry" : "iCloud 账户不可用，请登录 iCloud 后重试" }
+    var 同步结果未挂载: String { isEnglish ? "Sync is on but not connected yet — please wait or reopen the app" : "同步已开启但尚未连接，请稍候或重新打开 App" }
+    func 同步结果失败(_ reason: String) -> String { isEnglish ? "Sync failed: \(reason)" : "同步失败：\(reason)" }
     var 同步需先开启iCloud: String { isEnglish ? "Please enable iCloud Sync first" : "请先开启 iCloud 同步开关" }
+    // 2026-10-15：数据模型尚未完成 CloudKit 兼容性改造时的如实拒绝文案
+    var iCloud模型未兼容: String { isEnglish ? "iCloud Sync is temporarily unavailable: the data model is not yet CloudKit-compatible. Your data stays local and safe." : "iCloud 同步暂不可用：数据模型尚未完成 CloudKit 兼容性改造。数据仍安全保存在本机。" }
     var 每日提醒: String { isEnglish ? "Daily Reminder" : "每日提醒" }
     var 每日提醒标题: String { isEnglish ? "Don't forget to focus today!" : "今天别忘了专注哦！" }
     var 每日提醒内容: String { isEnglish ? "Start your first pomodoro and have a productive day 🍅" : "开启今天的第一个番茄钟，开始高效的一天 🍅" }
@@ -532,12 +661,46 @@ final class L10n: ObservableObject {
     var 提醒时间: String { isEnglish ? "Reminder Time" : "提醒时间" }
     var 重置数据库: String { isEnglish ? "Reset Database" : "重置数据库" }
     // 审查修复（2026-08-12）：补真实翻译；同时提示 iCloud 同步开启时云端旧数据会回灌（P1 #7）
-    var 重置数据库确认提示: String { isEnglish ? "All local data will be permanently erased. Continue?" : "本地全部数据将被永久清除，确定继续吗？" }
+    var 重置数据库确认提示: String { isEnglish ? "All local data will be permanently erased. If iCloud sync is on, the cloud copy will re-download afterwards. Continue?" : "本地全部数据将被永久清除。若已开启 iCloud 同步，云端副本稍后会重新下载回来。确定继续吗？" }
+    var 重置数据库确认提示含云端: String { isEnglish ? "This will permanently erase your data BOTH on this device AND in iCloud. Other devices signed in to the same Apple ID will also lose this data. This cannot be undone. Continue?" : "此操作将同时永久清除本机数据与 iCloud 云端数据。使用同一 Apple ID 的其他设备也会一并丢失这些数据，且不可撤销。确定继续吗？" }
     var 重置数据库成功提示: String { isEnglish ? "Database reset successfully" : "数据库重置成功" }
     var 重置数据库失败提示: String { isEnglish ? "Database reset failed" : "数据库重置失败" }
     var 确认重置: String { isEnglish ? "Confirm Reset" : "确认重置" }
     var 重置成功: String { isEnglish ? "Reset Successful" : "重置成功" }
     var 重置失败: String { isEnglish ? "Reset Failed" : "重置失败" }
+    // 修复（2026-10-14）：重置数据库时清除 iCloud 云端副本的失败文案
+    var 云端清除失败: String { isEnglish ? "Cloud data could not be deleted" : "云端数据清除失败" }
+    var 云端未登录: String { isEnglish ? "You are not signed in to iCloud" : "未登录 iCloud 账户" }
+    var 云端受限: String { isEnglish ? "iCloud access is restricted on this device" : "本设备的 iCloud 访问受限" }
+    var 云端状态未知: String { isEnglish ? "Unable to determine the iCloud status" : "无法确定 iCloud 状态" }
+    var 云端网络错误: String { isEnglish ? "Network error while contacting iCloud. Check your connection and try again" : "连接 iCloud 时网络异常，请检查网络后重试" }
+    var 云端容量超限: String { isEnglish ? "iCloud storage quota exceeded" : "iCloud 存储容量已超限" }
+    var 云端清除失败原因: String { isEnglish ? "Cloud data could not be deleted: %@" : "云端数据清除失败：%@" }
+    var 云端清除失败本地未改动: String { isEnglish ? "Your local data was NOT changed. Check your network or iCloud sign-in, then try again." : "本机数据未做任何改动。请检查网络或 iCloud 登录状态后重试。" }
+    // 修复（2026-10-14 审查 P2-5）：本地重置各失败原因的差异化文案 —— 禁止一律报「重置失败」
+    var 重置失败原因内存库: String { isEnglish ? "In-memory database has no file to reset" : "内存数据库没有可重置的文件" }
+    var 重置失败原因路径缺失: String { isEnglish ? "Database file path is unavailable" : "找不到数据库文件路径" }
+    var 重置失败原因重载失败: String { isEnglish ? "Database was deleted but could not be reloaded. Please restart the app" : "旧数据库已删除但新库加载失败，请重启 App" }
+    var 重置失败原因删除失败: String { isEnglish ? "Old database files could not be deleted, so your data was NOT erased. Please restart the app and try again" : "旧数据库文件无法删除，数据并未清除。请重启 App 后重试" }
+    var 重置失败原因已中止: String { isEnglish ? "Reset was aborted" : "重置已中止" }
+    var 重置进行中: String { isEnglish ? "A reset is already in progress. Please wait for it to finish" : "重置正在进行中，请稍候" }
+    // 2026-10-14 审查 P2-40：分段控件无障碍标签（任务分组 / 视图切换）
+    var 任务分组: String { isEnglish ? "Task group" : "任务分组" }
+    var 视图切换: String { isEnglish ? "View mode" : "视图切换" }
+    // 2026-10-14 复审 P2：计时页标题随所选日期 / 成就解锁播报
+    var 所选日期总计: String { isEnglish ? "Total for selected day" : "所选日期总计" }
+    var 成就已解锁: String { isEnglish ? "Achievement unlocked" : "成就已解锁" }
+    // 2026-10-14 P2：提醒通知标题/提前量单位国际化（原为硬编码中文）
+    func 提醒_模板(_ category: String) -> String {
+        isEnglish ? "\(category) Reminder" : "\(category)提醒"
+    }
+    func 提醒_提前模板(_ category: String, _ lead: String) -> String {
+        isEnglish ? "\(category) Reminder · \(lead) in advance" : "\(category)提醒 · 提前\(lead)"
+    }
+    func 提前天数(_ d: Int) -> String { isEnglish ? "\(d) day(s)" : "\(d) 天" }
+    func 提前小时数(_ h: Int) -> String { isEnglish ? "\(h) hour(s)" : "\(h) 小时" }
+    func 提前分钟数(_ m: Int) -> String { isEnglish ? "\(m) minute(s)" : "\(m) 分钟" }
+    var 未找到匹配的任务: String { isEnglish ? "No matching tasks" : "未找到匹配的任务" }
 
     // MARK: - 声音与震动
     var 声音与震动: String { isEnglish ? "Sound & Haptics" : "声音与震动" }
@@ -632,6 +795,10 @@ final class L10n: ObservableObject {
     }
     func 分秒(_ minutes: Int, _ seconds: Int) -> String {
         isEnglish ? "\(minutes)m \(seconds)s" : "\(minutes)分\(seconds)秒"
+    }
+    /// 不足 1 分钟的时长（列表里避免出现误导性的「0分钟」）
+    func 秒数(_ seconds: Int) -> String {
+        isEnglish ? "\(seconds)s" : "\(seconds)秒"
     }
 
     // MARK: - 成就
@@ -786,6 +953,8 @@ final class L10n: ObservableObject {
         : "已完成的任务归档后会被保留在此，可随时恢复。"
     }
     var 搜索归档任务: String { isEnglish ? "Search archived tasks" : "搜索归档任务" }
+    // 2026-10-14：任务页搜索框改为内容区自绘（原 .searchable 占用导航栏，导致标题行被下推）
+    var 清除搜索内容: String { isEnglish ? "Clear search" : "清除搜索内容" }
 
     // 习惯打卡热力图
     var 打卡热力图: String { isEnglish ? "Check-in Heatmap" : "打卡热力图" }
@@ -794,12 +963,118 @@ final class L10n: ObservableObject {
     var 打卡天数: String { isEnglish ? "Active Days" : "打卡天数" }
     // 无障碍修复（2026-08-12）：打卡按钮 VoiceOver 标签
     var 打卡: String { isEnglish ? "Check in" : "打卡" }
-    var 热力图图例: String { isEnglish ? "Less" : "少" }
+    /// 与 `少` 重复的键已合并（修复 P2：重复定义）
 
     // 数据导出
     var 数据导出: String { isEnglish ? "Export Data" : "数据导出" }
     var 导出数据: String { isEnglish ? "Export CSV" : "导出数据" }
     var 导出失败提示: String { isEnglish ? "Export failed" : "导出失败" }
+    // 修复（2026-10-14）：区分「库中无数据」与「导出失败」，避免误导用户重复点击
+    var 无可导出数据: String { isEnglish ? "No Data" : "暂无可导出数据" }
+    var 无可导出数据提示: String { isEnglish ? "There is no data to export yet. Complete a focus session, create a task, or check in a habit first." : "当前还没有可导出的数据。完成一次专注、创建任务或习惯打卡后再试。" }
+    var 数据未就绪: String { isEnglish ? "Not Ready" : "数据未就绪" }
+    var 数据未就绪提示: String { isEnglish ? "Data is still loading. Please try again in a moment." : "数据仍在加载中，请稍后重试。" }
 
     // 今日专注（锁屏 Widget）
+
+    // MARK: - App Intents / 快捷指令（2026-10-14）
+
+    /// 「新建任务」Intent 成功提示
+    func 已创建任务(_ title: String) -> String {
+        isEnglish ? "Task \"\(title)\" created." : "已创建任务「\(title)」。"
+    }
+    /// 「新建任务」Intent 空标题提示
+    var 任务标题不能为空: String { isEnglish ? "Task title can't be empty." : "任务标题不能为空。" }
+    /// 「习惯打卡」Intent 成功提示
+    func 习惯已打卡(_ name: String) -> String {
+        isEnglish ? "Checked in \"\(name)\"." : "已为「\(name)」打卡。"
+    }
+    /// 「习惯打卡」Intent 重复打卡提示
+    func 习惯今日已打卡(_ name: String) -> String {
+        isEnglish ? "\"\(name)\" is already checked in today." : "「\(name)」今天已经打过卡了。"
+    }
+    /// 「习惯打卡」Intent 无习惯提示
+    var 无习惯可打卡: String { isEnglish ? "No habits yet. Create one in FlowTakt first." : "还没有习惯，先在 FlowTakt 里创建一个吧。" }
+    /// 「今日统计」Intent 摘要
+    func 今日专注摘要(pomodoros: Int, minutes: Int, points: Int) -> String {
+        isEnglish
+            ? "Today: \(pomodoros) pomodoro(s), \(minutes) min focused, \(points) points."
+            : "今日完成 \(pomodoros) 个番茄钟，专注 \(minutes) 分钟，积分 \(points)。"
+    }
+
+    // MARK: - 正计时并入专注主面板（用户反馈 2026-11-19）
+    var 正计时: String { isEnglish ? "Stopwatch" : "正计时" }
+    var 返回番茄钟: String { isEnglish ? "Pomodoro" : "番茄钟" }
+    var 切换计时方式: String { isEnglish ? "Switch timing mode" : "切换计时方式" }
+    var 正计时说明: String { isEnglish ? "Count up freely — paused time is not counted." : "自由累计专注时间，暂停段不计入。" }
+    var 最近记录: String { isEnglish ? "Recent" : "最近记录" }
+    var 切换至正计时确认: String {
+        isEnglish
+            ? "The running pomodoro will end and its focused time will be kept in your stats."
+            : "当前番茄钟将结束，已专注的时长会保留并计入统计。"
+    }
+    var 切换至番茄钟确认: String {
+        isEnglish
+            ? "The stopwatch is still running. End it and record the elapsed time?"
+            : "正计时仍在进行，是否结束并记录已专注的时长？"
+    }
+
+    // MARK: - 专注时长统计（用户反馈 2026-11-19）
+    var 总专注时长: String { isEnglish ? "Total Focus Time" : "总专注时长" }
+    // 「今日」已在上方定义（L10n.今日），此处复用，不重复声明
+    var 本周: String { isEnglish ? "This Week" : "本周" }
+    var 本月: String { isEnglish ? "This Month" : "本月" }
+    var 累计: String { isEnglish ? "All Time" : "累计" }
+    var 按标签统计: String { isEnglish ? "Time by Tag" : "按标签统计" }
+    var 标签耗时说明: String {
+        isEnglish
+            ? "Focus time from both pomodoro and stopwatch, grouped by tag. Attach tags to tasks in the task editor to categorize."
+            : "番茄钟与正计时的专注时长，按标签归类统计。可在任务编辑页为任务挂标签。"
+    }
+    var 暂无标签数据: String { isEnglish ? "No focus data in this period" : "该时间段内暂无专注数据" }
+
+    // 标签统计档位扩展（2026-11-22 用户反馈）：全部 / 年 / 月 / 周 / 自定义
+    // 「全部」复用上方已有的 `全部`（All），避免同义键重复
+    var 统计年: String { isEnglish ? "Year" : "年" }
+    var 统计月: String { isEnglish ? "Month" : "月" }
+    var 统计周: String { isEnglish ? "Week" : "周" }
+    var 统计自定义: String { isEnglish ? "Custom" : "自定义" }
+    var 自定义统计范围: String { isEnglish ? "Custom Range" : "自定义范围" }
+    var 自定义范围提示: String { isEnglish ? "Tap to change the date range" : "点按修改统计起止日期" }
+    var 开始日期: String { isEnglish ? "Start Date" : "开始日期" }
+    var 结束日期: String { isEnglish ? "End Date" : "结束日期" }
+
+    // MARK: - 标签编辑（用户反馈 2026-11-19：打通任务↔标签，补创建入口）
+    var 标签: String { isEnglish ? "Tags" : "标签" }
+    var 新建标签: String { isEnglish ? "New Tag" : "新建标签" }
+    var 标签名称: String { isEnglish ? "Tag name" : "标签名称" }
+    var 重命名: String { isEnglish ? "Rename" : "重命名" }
+    var 删除标签: String { isEnglish ? "Delete Tag" : "删除标签" }
+    var 删除标签确认: String {
+        isEnglish
+            ? "Delete this tag? Tasks using it will be untagged; focus data is kept."
+            : "删除该标签？使用它的任务将解除关联，专注数据保留。"
+    }
+    var 今日专注时长: String { isEnglish ? "Focus Time Today" : "今日专注" }
+
+    // MARK: - 白噪音记忆（用户反馈 2026-11-19）
+    var 专注时自动播放白噪音: String { isEnglish ? "Auto-play white noise" : "专注时自动播放白噪音" }
+    var 白噪音记忆说明: String {
+        isEnglish
+            ? "Off means focus sessions start silently. Your choice is remembered."
+            : "关闭后开始专注不再自动播放背景音，你的选择会被记住。"
+    }
+
+    // MARK: - iCloud 自动同步状态（用户反馈 2026-11-19）
+    var iCloud自动同步说明: String {
+        isEnglish
+            ? "iCloud Sync is on by default: changes upload automatically and other devices' updates merge in the background. You can turn it off on any device."
+            : "iCloud 同步默认开启：本机改动自动上传，其它设备的更新在后台自动合并，无需手动操作。可在任意设备单独关闭。"
+    }
+    var 同步状态: String { isEnglish ? "Sync Status" : "同步状态" }
+    var 同步状态自动: String { isEnglish ? "Active · automatic" : "已开启 · 自动同步" }
+    var 同步状态账户不可用: String { isEnglish ? "iCloud account unavailable" : "iCloud 账户不可用" }
+    var 同步状态未挂载: String { isEnglish ? "Not active yet" : "尚未挂载，重启后生效" }
+    var 同步状态已关闭: String { isEnglish ? "Off" : "已关闭" }
+    var 同步状态检测中: String { isEnglish ? "Checking iCloud…" : "正在检查 iCloud…" }
 }

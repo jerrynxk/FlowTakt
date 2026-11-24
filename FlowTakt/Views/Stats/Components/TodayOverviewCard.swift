@@ -25,6 +25,8 @@ struct TodayOverviewCard: View {
                 Text(L10n.shared.今日概览)
                     .font(.headline)
                     .foregroundColor(.primary)
+                    // 无障碍（2026-10-14）：卡片标题标记为二级标题（与周趋势/年热力图一致）
+                    .accessibilityHeading(.h2)
                 Spacer()
             }
             .padding(.horizontal, 16)
@@ -45,16 +47,20 @@ struct TodayOverviewCard: View {
                             .foregroundColor(.secondary)
                     }
 
-                    // 专注时长
-                    if statsViewModel.todayDuration > 0 {
-                        HStack(spacing: 6) {
-                            Image(systemName: "clock.fill")
-                                .font(.caption)
-                                .foregroundColor(.focusRed.opacity(0.7))
-                            Text(statsViewModel.todayDuration.formattedDuration)
-                                .font(.subheadline)
-                                .foregroundColor(.primary)
-                        }
+                    // 专注时长（用户反馈 2026-11-19）：始终显示 —— 番茄时长可自定义，
+                    // 「完成了几个」不足以反映投入；时长才是可比较的指标。
+                    // 同时补上文字标签（原来只有图标+数字，用户不知道这是什么）。
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock.fill")
+                            .font(.caption)
+                            .foregroundColor(.focusRed.opacity(0.7))
+                        Text(statsViewModel.todayDuration.formattedDuration)
+                            .font(.subheadline)
+                            .monospacedDigit()
+                            .foregroundColor(.primary)
+                        Text(L10n.shared.专注时长)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
 
                     // 积分
@@ -104,6 +110,18 @@ struct TodayOverviewCard: View {
             .padding(16)
         }
         .cardStyle()
+        // 无障碍（2026-10-14）：整卡合并为一个可读元素（此前读屏需逐个划过数字/图标/进度环）
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(overviewAccessibilityLabel)
+    }
+
+    /// VoiceOver 整卡标签：「今日概览，今日完成 X 个，专注 Y，积分 Z，完成率 N%」
+    private var overviewAccessibilityLabel: String {
+        var parts = [L10n.shared.今日概览, L10n.shared.todayCompleted(todayCompletedCount)]
+        parts.append("\(L10n.shared.专注时长) \(statsViewModel.todayDuration.formattedDuration)")
+        parts.append(L10n.shared.todayPoints(todayPoints))
+        parts.append("\(L10n.shared.完成率) \(Int(statsViewModel.completionRate * 100))%")
+        return parts.joined(separator: "，")
     }
 }
 
@@ -121,6 +139,8 @@ struct TodayOverviewCard_Previews: PreviewProvider {
             ))
             .padding()
             .background(Color.appBackground)
-    }
+            .environmentObject(L10n.shared)
+    
+}
 }
 #endif

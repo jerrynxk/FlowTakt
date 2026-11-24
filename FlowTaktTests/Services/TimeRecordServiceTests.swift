@@ -42,7 +42,7 @@ final class TimeRecordServiceTests: XCTestCase {
     func testStartRecording_GivenTaskAndProject_ThenPropertiesAssigned() {
         let context = persistence.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "编码任务"
         task.status = TaskStatus.active.rawValue
         task.estimatedPomodoros = 3
@@ -53,7 +53,7 @@ final class TimeRecordServiceTests: XCTestCase {
         task.updatedAt = Date()
 
         let tag = Tag(context: context)
-        tag.id = UUID()
+        tag.storageId = UUID()
         tag.name = "工作"
         tag.colorHex = "#007AFF"
         try? context.save()
@@ -104,7 +104,7 @@ final class TimeRecordServiceTests: XCTestCase {
         let record = service.startRecording(task: nil, note: nil, project: nil, tag: nil)
 
         let tag = Tag(context: persistence.viewContext)
-        tag.id = UUID()
+        tag.storageId = UUID()
         tag.name = "标签"
         tag.colorHex = "#34C759"
         try? persistence.viewContext.save()
@@ -165,7 +165,7 @@ final class TimeRecordServiceTests: XCTestCase {
     func testFetchRecordsForTask_ThenReturnsTaskRecords() {
         let context = persistence.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "任务A"
         task.status = TaskStatus.active.rawValue
         task.estimatedPomodoros = 1
@@ -215,5 +215,56 @@ final class TimeRecordServiceTests: XCTestCase {
         let grouped = service.getDurationByProject(from: yesterday, to: tomorrow)
 
         XCTAssertEqual(grouped.count, 2)
+    }
+
+    // ========================================================================
+    // MARK: - 正计时暂停/继续（用户反馈 2026-11-17）
+    // ========================================================================
+
+    func testPauseResume_ThenDurationExcludesPausedSegment() {
+        // Given - 记录已开始
+        let record = service.startRecording(task: nil, note: nil, project: nil, tag: nil)
+
+        // When - 暂停 40 秒后继续；总挂钟 160 秒（100 计时 + 40 暂停 + 20 继续）
+        service.pauseRecording(record)
+        record.pauseStartDate = Date().addingTimeInterval(-40)
+        service.resumeRecording(record)
+        record.startTime = Date().addingTimeInterval(-160)
+        service.stopRecording(record)
+
+        // Then - 净时长 = 160 - 40（结算的暂停段）= 120 秒
+        XCTAssertEqual(record.duration, 120, accuracy: 2.0)
+        XCTAssertNil(record.pauseStartDate)
+        XCTAssertEqual(record.pausedDuration, 40, accuracy: 2.0)
+    }
+
+    func testPauseThenStop_ThenDurationFrozenAtPauseMoment() {
+        let record = service.startRecording(task: nil, note: nil, project: nil, tag: nil)
+        // 挂钟 100 秒：前 50 秒计时 + 后 50 秒暂停
+        record.startTime = Date().addingTimeInterval(-100)
+        service.pauseRecording(record)
+        record.pauseStartDate = Date().addingTimeInterval(-50)  // 50 秒前开始暂停
+
+        service.stopRecording(record)
+
+        // 净时长 = 100 - 50（暂停段）= 50 秒
+        XCTAssertEqual(record.duration, 50, accuracy: 2.0)
+        XCTAssertNil(record.pauseStartDate)
+    }
+
+    func testNetElapsedSeconds_WhenPaused_ThenFrozen() {
+        let record = service.startRecording(task: nil, note: nil, project: nil, tag: nil)
+        // 挂钟 100 秒：前 70 秒计时 + 后 30 秒暂停
+        record.startTime = Date().addingTimeInterval(-100)
+        service.pauseRecording(record)
+        record.pauseStartDate = Date().addingTimeInterval(-30)
+
+        let first = service.netElapsedSeconds(for: record)
+        Thread.sleep(forTimeInterval: 0.05)
+        let second = service.netElapsedSeconds(for: record)
+
+        // 净时长 = 100 - 30（当前暂停段）= 70 秒，且暂停期间冻结
+        XCTAssertEqual(first, 70, accuracy: 2.0)
+        XCTAssertEqual(second, first, accuracy: 0.2, "暂停期间净计时应冻结")
     }
 }

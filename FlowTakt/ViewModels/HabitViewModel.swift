@@ -108,7 +108,7 @@ final class HabitViewModel: ObservableObject {
         descriptionText: String? = nil,
         iconName: String? = nil,
         colorHex: String? = nil,
-        frequency: String = "daily",
+        frequency: String = HabitFrequency.daily.rawValue,
         targetCount: Int16 = 1
     ) {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }

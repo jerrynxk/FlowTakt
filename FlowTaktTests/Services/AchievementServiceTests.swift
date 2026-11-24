@@ -93,7 +93,7 @@ final class AchievementServiceTests: XCTestCase {
         // Given - 创建已完成会话
         let context = persistence.viewContext
         let session = FocusSession(context: context)
-        session.id = UUID()
+        session.storageId = UUID()
         session.startTime = Date()
         session.endTime = Date()
         session.plannedDuration = 1500
@@ -129,7 +129,7 @@ final class AchievementServiceTests: XCTestCase {
         // Given
         let context = persistence.viewContext
         let session = FocusSession(context: context)
-        session.id = UUID()
+        session.storageId = UUID()
         session.startTime = Date()
         session.endTime = Date()
         session.plannedDuration = 1500
@@ -188,7 +188,7 @@ final class AchievementServiceTests: XCTestCase {
 
         let context = persistence.viewContext
         let session = FocusSession(context: context)
-        session.id = UUID()
+        session.storageId = UUID()
         session.startTime = Date()
         session.endTime = Date()
         session.plannedDuration = 1500
@@ -219,7 +219,7 @@ final class AchievementServiceTests: XCTestCase {
         // 创建 10 个已完成会话
         for i in 0..<10 {
             let session = FocusSession(context: context)
-            session.id = UUID()
+            session.storageId = UUID()
             session.startTime = Date().addingTimeInterval(TimeInterval(-3600 + i * 60))
             session.endTime = Date()
             session.plannedDuration = 1500
@@ -260,7 +260,7 @@ final class AchievementServiceTests: XCTestCase {
         _ = achievementService.fetchAllAchievements()
         let context = persistence.viewContext
         let session = FocusSession(context: context)
-        session.id = UUID()
+        session.storageId = UUID()
         session.startTime = Date()
         session.endTime = Date()
         session.plannedDuration = 1500
@@ -293,7 +293,7 @@ final class AchievementServiceTests: XCTestCase {
         // 创建 10 个已完成会话，每个 10 分，累计 100 分
         for i in 0..<10 {
             let session = FocusSession(context: context)
-            session.id = UUID()
+            session.storageId = UUID()
             session.startTime = Date().addingTimeInterval(TimeInterval(-3600 + i * 60))
             session.endTime = Date()
             session.plannedDuration = 1500
@@ -329,7 +329,7 @@ final class AchievementServiceTests: XCTestCase {
 
         for i in 0..<30 {
             let session = FocusSession(context: context)
-            session.id = UUID()
+            session.storageId = UUID()
             let pastDate = calendar.date(byAdding: .day, value: -i, to: Date().startOfDay) ?? Date()
             session.startTime = pastDate
             session.endTime = pastDate.addingTimeInterval(1500)
@@ -366,7 +366,7 @@ final class AchievementServiceTests: XCTestCase {
 
         let context = persistence.viewContext
         let session = FocusSession(context: context)
-        session.id = UUID()
+        session.storageId = UUID()
         session.startTime = Date()
         session.endTime = Date()
         session.plannedDuration = 1500
@@ -389,7 +389,7 @@ final class AchievementServiceTests: XCTestCase {
         let context = persistence.viewContext
         for i in 0..<3 {
             let session = FocusSession(context: context)
-            session.id = UUID()
+            session.storageId = UUID()
             session.startTime = Date()
             session.endTime = Date()
             session.plannedDuration = 1500
@@ -419,7 +419,7 @@ final class AchievementServiceTests: XCTestCase {
         _ = achievementService.fetchAllAchievements()
         let context = persistence.viewContext
         let session = FocusSession(context: context)
-        session.id = UUID()
+        session.storageId = UUID()
         session.startTime = Date()
         session.endTime = Date()
         session.plannedDuration = 300
@@ -448,7 +448,7 @@ final class AchievementServiceTests: XCTestCase {
         let context = persistence.viewContext
 
         let focus = FocusSession(context: context)
-        focus.id = UUID()
+        focus.storageId = UUID()
         focus.startTime = Date().addingTimeInterval(-7200)
         focus.endTime = Date()
         focus.plannedDuration = 1500
@@ -462,7 +462,7 @@ final class AchievementServiceTests: XCTestCase {
 
         for i in 0..<2 {
             let breakSession = FocusSession(context: context)
-            breakSession.id = UUID()
+            breakSession.storageId = UUID()
             breakSession.startTime = Date().addingTimeInterval(TimeInterval(-3600 + i * 60))
             breakSession.endTime = Date()
             breakSession.plannedDuration = 300

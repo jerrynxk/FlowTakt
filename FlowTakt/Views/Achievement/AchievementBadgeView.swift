@@ -178,12 +178,14 @@ struct AchievementBadgeView_Previews: PreviewProvider {
         .padding()
         .background(Color.appBackground)
         .previewLayout(.sizeThatFits)
-    }
+        .environmentObject(L10n.shared)
+    
+}
 
     private static func makeAchievement(isUnlocked: Bool) -> Achievement {
         let ctx = PersistenceController.shared.viewContext
         let a = Achievement(context: ctx)
-        a.id = UUID()
+        a.storageId = UUID()
         a.identifier = "first_pomodoro"
         a.title = "初次专注"
         a.descriptionText = "完成你的第一个番茄钟"

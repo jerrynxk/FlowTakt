@@ -80,6 +80,8 @@ final class TimeRecordViewModel: ObservableObject {
         currentRecord = nil
         isRecording = false
         totalDurationToday = 0
+        // 修复（2026-10-15 审查 P2-V6）：与同类 VM 一致，重置后日期视图回到今天
+        selectedDate = Date()
     }
 
     @objc private func handleDatabaseDidReset() {
@@ -92,8 +94,19 @@ final class TimeRecordViewModel: ObservableObject {
     // MARK: - Public Methods
 
     /// 加载所有时间记录
+    /// 修复（2026-10-14 P2）：与库内「未闭合记录」对账 —— App 被强杀时会留下
+    /// `endTime == nil` 的记录；此前 `isRecording` 恒为 false，于是用户可以再开一条计时，
+    /// 旧记录永远停不了表（界面上也无法再停止它）。这里把未闭合记录恢复为「进行中」。
     func loadRecords() {
         records = timeRecordService.fetchAllRecords()
+
+        // 恢复未闭合记录（强杀残留）。只在「本进程还没在计时」时接管，
+        // 避免每次 loadRecords 都重复发布 isRecording（会打乱订阅方的 expectation 计数）。
+        if currentRecord == nil, !isRecording,
+           let open = records.first(where: { $0.endTime == nil }) {
+            currentRecord = open
+            isRecording = true
+        }
     }
 
     /// 开始记录时间
@@ -112,6 +125,11 @@ final class TimeRecordViewModel: ObservableObject {
         refreshTodayTotal()
     }
 
+    /// 当前是否处于暂停段（判据收口在持久化字段，跨进程恢复有效）
+    var isPaused: Bool {
+        currentRecord?.pauseStartDate != nil
+    }
+
     /// 停止当前记录
     func stopRecording() {
         guard let record = currentRecord else { return }
@@ -120,6 +138,26 @@ final class TimeRecordViewModel: ObservableObject {
         isRecording = false
         loadRecords()
         refreshTodayTotal()
+    }
+
+    /// 暂停正计时（用户反馈 2026-11-17）：计时中的净时长冻结，暂停段不计入统计。
+    func pauseRecording() {
+        guard let record = currentRecord else { return }
+        timeRecordService.pauseRecording(record)
+        loadRecords()
+    }
+
+    /// 继续正计时
+    func resumeRecording() {
+        guard let record = currentRecord else { return }
+        timeRecordService.resumeRecording(record)
+        loadRecords()
+    }
+
+    /// 当前净计时秒数（扣除暂停段），供 UI 实时显示。
+    func currentNetElapsed() -> TimeInterval {
+        guard let record = currentRecord else { return 0 }
+        return timeRecordService.netElapsedSeconds(for: record)
     }
 
     /// 删除指定记录
@@ -133,6 +171,22 @@ final class TimeRecordViewModel: ObservableObject {
         timeRecordService.deleteRecord(record)
         loadRecords()
         refreshTodayTotal()
+    }
+
+    /// 多选删除（修复 2026-10-14 审查 T1：越界守卫下沉到 ViewModel，才可被单测覆盖）
+    ///
+    /// 崩溃修复（2026-10-02）：`recordsForDate` 是**计算属性**，每次访问都会基于最新的
+    /// `records` 重新 filter + sort；而 `deleteRecord` 内部会 `loadRecords()` 把数组整体替换，
+    /// 导致同一轮删除中后续索引失效 → `recordsForDate[index]` 越界触发
+    /// `Fatal error: Index out of range`。
+    ///
+    /// 修复：进入循环前先取一次快照，并防御越界。索引语义 = 用户在列表中所见的位置，
+    /// 因此**按快照删除全部选中项**（不再因源数据收缩而漏删）。
+    func deleteRecords(at indexSet: IndexSet, in records: [TimeRecord]) {
+        let snapshot = records
+        for index in indexSet where snapshot.indices.contains(index) {
+            deleteRecord(snapshot[index])
+        }
     }
 
     /// 刷新今日总时长

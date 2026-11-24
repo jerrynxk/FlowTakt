@@ -10,6 +10,8 @@ struct UnlockAnimationView: View {
     @EnvironmentObject var l10n: L10n
     // 无障碍修复（2026-08-12）：尊重「减少动态效果」设置，动画降级为直接显示
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    // 无障碍补齐（2026-11-02）：读屏开启时延长自动关闭时长，避免播报中途被抢走
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
 
     @State private var showContent = false
     @State private var starBurst = false
@@ -18,25 +20,56 @@ struct UnlockAnimationView: View {
     private let animationDuration: Double = 0.6
     private let starCount = 12
 
+    /// 修复（2026-10-14 P2）：本视图整体对 VoiceOver 隐藏（避免与卡片重复播报），
+    /// 但解锁是必须被播报的事件 —— 原注释称「由触发方另行播报」，实测全仓无任何
+    /// UIAccessibility.post 调用，等于读屏用户完全感知不到解锁。
+    private func announceUnlocked() {
+        UIAccessibility.post(notification: .announcement,
+                             argument: achievement.title.isEmpty
+                                ? L10n.shared.成就已解锁
+                                : achievement.title)
+    }
+
     var body: some View {
         ZStack {
-            // 半透明背景
+            // 半透明背景（仅视觉遮罩：关闭动作由卡片承担，遮罩本身对读屏隐藏）
             Color.black.opacity(showContent ? 0.45 : 0)
                 .ignoresSafeArea()
                 .onTapGesture(perform: dismiss)
+                .accessibilityHidden(true)
 
-            // 星星爆发
+            // 星星爆发（纯装饰）
             ForEach(0..<starCount, id: \.self) { index in
                 starParticle(index: index)
+                    .accessibilityHidden(true)
             }
 
             // 主内容
+            // 无障碍补齐（2026-11-02）：旧实现整视图 `.accessibilityHidden(true)`，
+            // 而唯一的关闭路径是点击背景遮罩 → 读屏用户既听不到卡片内容、也无法主动关闭，
+            // 只能等 2.5s 自动消失。现改为「遮罩/粒子隐藏 + 卡片合并为单个可点元素」：
+            // 焦点可落在卡片上，双击即关闭，并在读屏开启时延长自动关闭时长。
             mainContent
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(unlockedAnnouncement)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint(L10n.shared.双击关闭)
+                .accessibilityAction { dismiss() }
+                .onTapGesture(perform: dismiss)
         }
-        .onAppear(perform: startAnimation)
-        // 无障碍：动画为短暂视觉庆祝，避免 VoiceOver 逐元素朗读；成就信息由触发方（成就弹窗）另行播报
-        .accessibilityHidden(true)
-        .accessibilityElement(children: .ignore)
+        .onAppear {
+            startAnimation()
+            // 修复（P2）：解锁事件必须被 VoiceOver 播报
+            announceUnlocked()
+        }
+    }
+
+    /// 卡片合并后的读屏文本：「成就解锁，标题，描述」
+    private var unlockedAnnouncement: String {
+        var parts = [L10n.shared.成就解锁]
+        if !achievement.title.isEmpty { parts.append(achievement.title) }
+        if let desc = achievement.descriptionText, !desc.isEmpty { parts.append(desc) }
+        return parts.joined(separator: "，")
     }
 
     // MARK: - 主内容
@@ -131,8 +164,10 @@ struct UnlockAnimationView: View {
             starBurst = true
         }
 
-        // 自动消失
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+        // 自动消失（无障碍补齐 2026-11-02：读屏开启时延长到 8s，
+        // 原 2.5s 会在播报「成就解锁 + 标题 + 描述」时被打断）
+        let autoDismissDelay: TimeInterval = voiceOverEnabled ? 8.0 : 2.5
+        DispatchQueue.main.asyncAfter(deadline: .now() + autoDismissDelay) {
             dismiss()
         }
     }
@@ -184,7 +219,7 @@ struct UnlockAnimationView_Previews: PreviewProvider {
     static var previews: some View {
         let ctx = PersistenceController.shared.viewContext
         let achievement = Achievement(context: ctx)
-        achievement.id = UUID()
+        achievement.storageId = UUID()
         achievement.identifier = "first_pomodoro"
         achievement.title = "初次专注"
         achievement.descriptionText = "完成你的第一个番茄钟"
@@ -196,6 +231,8 @@ struct UnlockAnimationView_Previews: PreviewProvider {
 
         return UnlockAnimationView(achievement: achievement, onDismiss: {})
             .background(Color.appBackground)
-    }
+            .environmentObject(L10n.shared)
+    
+}
 }
 #endif

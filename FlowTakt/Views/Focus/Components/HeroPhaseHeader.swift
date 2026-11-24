@@ -13,14 +13,13 @@ import SwiftUI
 // 现在任意状态下点击即切换，与系统 segmented 交互一致。
 
 struct PhasePickerView: View {
-    @EnvironmentObject var focusViewModel: FocusViewModel
     @EnvironmentObject var l10n: L10n
 
-    /// 与 activePhase 镜像的本地选择（驱动系统 Segmented 选中态）
-    @State private var selectedPhase: FocusPhase = .focus
+    /// 选中态由 FocusView 上提并统一驱动（点击 Segmented / 左右滑动均经此 Binding）
+    @Binding var selection: FocusPhase
 
     var body: some View {
-        Picker("", selection: $selectedPhase) {
+        Picker("", selection: $selection) {
             ForEach(FocusPhase.allCases, id: \.self) { phase in
                 Text(phaseShortName(phase)).tag(phase)
             }
@@ -28,23 +27,9 @@ struct PhasePickerView: View {
         .pickerStyle(.segmented)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .onChange(of: selectedPhase) { newPhase in
-            handleSelection(newPhase)
-        }
-        .onAppear {
-            selectedPhase = focusViewModel.activePhase
-        }
-        .onChange(of: focusViewModel.activePhase) { newPhase in
-            selectedPhase = newPhase
-        }
-    }
-
-    // MARK: - 选中处理
-
-    /// 处理 segmented 选择：直接调用 switchPhase（运行中由 ViewModel 自行处理 abandon）
-    private func handleSelection(_ phase: FocusPhase) {
-        guard phase != focusViewModel.activePhase else { return }
-        focusViewModel.switchPhase(phase)
+        // 无障碍（2026-10-14）：分段控件补用途标签（段位文本自解释，标签说明「这是什么选择」）
+        .accessibilityLabel(L10n.shared.阶段)
+        .accessibilityIdentifier("topTabPicker")
     }
 
     private func phaseShortName(_ phase: FocusPhase) -> String {
@@ -56,28 +41,34 @@ struct PhasePickerView: View {
     }
 }
 
-// MARK: - 阶段说明行（v1.3.4 跟随大标题位置 · 规格与 DateSectionHeader 一致）
-// 紧跟在 NavigationStack 大标题下方，与其它 section header 规格一致：
-// subheadline semibold primary（标题）+ footnote secondary（副标题）。
+// MARK: - 阶段说明行（2026-11-22 弱化：保留文案，降低视觉权重）
+// 原规格 subheadline semibold primary + footnote secondary 与大标题争夺注意力，
+// 「专注 / 深度聚焦」语义亦与分段控件、圆环徽章重复。
+// 现降为 footnote secondary + caption2 tertiary，作为引导语退居次要层级。
 
 struct PhaseCaptionView: View {
     @EnvironmentObject var focusViewModel: FocusViewModel
     @EnvironmentObject var l10n: L10n
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             Text(titleForCurrentPhase)
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(.primary)
-            Text("·")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
+            Text("·")
+                .font(.subheadline)
+                .foregroundStyle(.tertiary)
             Text(subtitleForCurrentPhase)
                 .font(.footnote)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
         .multilineTextAlignment(.center)
+        // 无障碍补齐（2026-11-02）：三段文本 + 中点分隔符在此前会被 VoiceOver 拆成
+        // 三个元素逐个朗读，「·」还会被读成「中点符号」。合并为一句：
+        // 「深度聚焦，25 分钟专注」。
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(titleForCurrentPhase + "，" + subtitleForCurrentPhase)
     }
 
     private var titleForCurrentPhase: String {

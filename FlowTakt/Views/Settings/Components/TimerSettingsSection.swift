@@ -78,4 +78,5 @@ struct TimerSettingsSection: View {
     Form {
         TimerSettingsSection(viewModel: SettingsViewModel(syncService: MockSyncService()))
     }
+    .environmentObject(L10n.shared)
 }

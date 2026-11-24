@@ -60,7 +60,7 @@ final class FocusServiceTests: XCTestCase {
         // Given
         let context = persistence.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "测试任务"
         task.status = TaskStatus.active.rawValue
         task.estimatedPomodoros = 2
@@ -167,7 +167,7 @@ final class FocusServiceTests: XCTestCase {
         // Given
         let context = persistence.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "测试任务"
         task.completedPomodoros = 0
         task.status = TaskStatus.active.rawValue
@@ -246,8 +246,8 @@ final class FocusServiceTests: XCTestCase {
 
         // Then
         let fetched = focusService.fetchTodaysSessions().first!
-        XCTAssertEqual(fetched.status, SessionStatus.abandoned.rawValue)
-        // 审查 #16：放弃不再写无效惩罚积分（统计口径只算 completed）；#17：应记录结束时间
+        XCTAssertEqual(fetched.status, SessionStatus.earlyCompleted.rawValue)
+        // 用户反馈 2026-11-17：提前结束保留净时长但不发积分；#17：应记录结束时间
         XCTAssertEqual(fetched.earnedPoints, 0)
         XCTAssertNotNil(fetched.endTime, "放弃会话应记录 endTime，保证数据完整性")
     }
@@ -464,7 +464,7 @@ final class FocusServiceTests: XCTestCase {
         // Given
         let context = persistence.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "幂等测试任务"
         task.completedPomodoros = 0
         task.status = TaskStatus.active.rawValue
@@ -526,7 +526,7 @@ final class FocusServiceTests: XCTestCase {
 
         // Then - 状态不被覆盖为 completed
         let fetched = focusService.fetchTodaysSessions().first!
-        XCTAssertEqual(fetched.status, SessionStatus.abandoned.rawValue, "已放弃会话不应被 complete 覆盖")
+        XCTAssertEqual(fetched.status, SessionStatus.earlyCompleted.rawValue, "提前结束会话不应被 complete 覆盖")
     }
 
     // ========================================================================
@@ -577,7 +577,7 @@ final class FocusServiceTests: XCTestCase {
 
         // Then - 原因持久化到会话
         let fetched = focusService.fetchTodaysSessions().first!
-        XCTAssertEqual(fetched.status, SessionStatus.abandoned.rawValue)
+        XCTAssertEqual(fetched.status, SessionStatus.earlyCompleted.rawValue)
         XCTAssertEqual(fetched.interruptionReason, "电话", "中断原因应写入会话")
     }
 
@@ -595,7 +595,7 @@ final class FocusServiceTests: XCTestCase {
 
         // Then
         let fetched = focusService.fetchTodaysSessions().first!
-        XCTAssertEqual(fetched.status, SessionStatus.abandoned.rawValue)
+        XCTAssertEqual(fetched.status, SessionStatus.earlyCompleted.rawValue)
         XCTAssertNil(fetched.interruptionReason, "未传原因时应为 nil")
     }
 
@@ -608,7 +608,7 @@ final class FocusServiceTests: XCTestCase {
         let context = persistence.viewContext
         for (i, phase) in [FocusPhase.focus, FocusPhase.shortBreak].enumerated() {
             let session = FocusSession(context: context)
-            session.id = UUID()
+            session.storageId = UUID()
             session.startTime = Date().addingTimeInterval(TimeInterval(-3600 + i * 60))
             session.endTime = Date()
             session.plannedDuration = 1500
@@ -635,7 +635,7 @@ final class FocusServiceTests: XCTestCase {
         let context = persistence.viewContext
         for phase in [FocusPhase.focus, FocusPhase.shortBreak] {
             let session = FocusSession(context: context)
-            session.id = UUID()
+            session.storageId = UUID()
             session.startTime = Date()
             session.endTime = Date()
             session.plannedDuration = 1500
@@ -655,5 +655,129 @@ final class FocusServiceTests: XCTestCase {
         // Then
         XCTAssertEqual(inRange.count, 1, "区间查询只应统计专注阶段完成会话")
         XCTAssertEqual(inRange.first?.phase, FocusPhase.focus.rawValue)
+    }
+
+    // ========================================================================
+    // MARK: - 提前结束保留时长（用户反馈 2026-11-17）
+    // ========================================================================
+
+    func testAbandonSession_GivenRunningSession_ThenDurationPreservedAndEarlyCompleted() {
+        // Given - 会话已开始，模拟已专注 5 分钟（updatedAt 回拨 300 秒）
+        let session = focusService.startFocusSession(
+            task: nil, plannedDuration: 1500, phase: .focus, roundIndex: 1)
+        session.updatedAt = Date().addingTimeInterval(-300)
+        try? persistence.viewContext.save()
+
+        // When - 用户提前结束
+        focusService.abandonSession(session)
+
+        // Then - 净专注时长保留，状态为提前完成，不发积分、不增加番茄
+        let fetched = focusService.fetchTodaysSessions().first!
+        XCTAssertEqual(fetched.status, SessionStatus.earlyCompleted.rawValue)
+        XCTAssertGreaterThanOrEqual(fetched.actualDuration, 299, "提前结束必须保留净专注秒数")
+        XCTAssertEqual(fetched.earnedPoints, 0, "提前结束不发积分")
+        XCTAssertTrue(fetched.countsTowardDuration, "提前结束应计入时长统计")
+        XCTAssertFalse(fetched.isCompleted, "提前结束不算完成番茄")
+        XCTAssertTrue(focusService.fetchAllCompletedSessions().isEmpty, "提前结束不得进入完成番茄口径")
+        XCTAssertEqual(focusService.fetchAllSessionsForDuration().count, 1, "提前结束应进入时长口径")
+    }
+
+    func testAbandonSession_WhenPaused_ThenOnlyNetActiveTimePreserved() {
+        // Given - 运行 200 秒后暂停（落库 200 秒），再挂起 100 秒
+        let session = focusService.startFocusSession(
+            task: nil, plannedDuration: 1500, phase: .focus, roundIndex: 1)
+        session.updatedAt = Date().addingTimeInterval(-200)
+        focusService.pauseSession(session, activeSeconds: 200)
+        session.updatedAt = Date().addingTimeInterval(-100)  // 暂停期间挂钟多走 100 秒
+
+        // When
+        focusService.abandonSession(session)
+
+        // Then - 暂停段不计入，仅保留 200 秒净专注
+        XCTAssertEqual(session.actualDuration, 200, accuracy: 1.0)
+        XCTAssertEqual(session.status, SessionStatus.earlyCompleted.rawValue)
+    }
+
+    // ========================================================================
+    // MARK: - 系统替换路径保留净时长（用户反馈 2026-11-19 修订）
+    // ========================================================================
+
+    /// 暂停中的孤儿会话已有真实净专注 → 被新会话替换时必须保留该时长。
+    ///
+    /// 历史：2026-11-17 曾判为 discard（不计时长），用户反馈「暂停后时长被清空」，
+    /// 2026-11-19 改为「净时长 ≥ 1 秒即按 earlyCompleted 结算」。
+    func testStartFocusSession_GivenPausedOrphanWithTime_ThenKeepsNetDuration() {
+        // Given - 一个暂停中的会话（已落库 120 秒净专注）
+        let orphan = focusService.startFocusSession(
+            task: nil, plannedDuration: 1500, phase: .focus, roundIndex: 1)
+        focusService.pauseSession(orphan, activeSeconds: 120)
+
+        // When - 新会话启动（如 Siri/快捷指令、从其它入口再开一次计时）
+        _ = focusService.startFocusSession(
+            task: nil, plannedDuration: 1500, phase: .focus, roundIndex: 1)
+
+        // Then - 孤儿结算为 earlyCompleted：净时长保留并计入时长口径，但不算完成番茄
+        let fetched = focusService.fetchTodaysSessions().first { $0.id == orphan.id }!
+        XCTAssertEqual(fetched.status, SessionStatus.earlyCompleted.rawValue,
+                       "有净时长的暂停会话被替换时应保留时长")
+        XCTAssertEqual(fetched.interruptionReason, "replaced_by_new_session")
+        XCTAssertEqual(fetched.actualDuration, 120, accuracy: 1.0)
+        XCTAssertTrue(fetched.countsTowardDuration, "已专注的净时长必须计入统计")
+        XCTAssertFalse(fetched.isCompleted, "被替换的会话不算完成番茄")
+        XCTAssertTrue(focusService.fetchAllSessionsForDuration().contains { $0.id == orphan.id })
+    }
+
+    /// 跨进程残留的 running 孤儿（净时长按挂钟已远超计划）→ 必须封顶到计划时长。
+    ///
+    /// 2026-11-19 审查补：改判 earlyCompleted（计入统计）后，若不做封顶，
+    /// 「三天前开始、忘了停」的残留会话会被写成 4320 分钟专注，直接污染统计与标签分布。
+    func testStartFocusSession_GivenOverdueRunningOrphan_ThenDurationCappedToPlanned() {
+        // Given - 会话停在 running，开始时间被回拨 3 天（模拟进程被回收）
+        let orphan = focusService.startFocusSession(
+            task: nil, plannedDuration: 1500, phase: .focus, roundIndex: 1)
+        orphan.startTime = Date().addingTimeInterval(-3 * 24 * 3600)
+        orphan.updatedAt = Date().addingTimeInterval(-3 * 24 * 3600)
+
+        // When
+        _ = focusService.startFocusSession(
+            task: nil, plannedDuration: 1500, phase: .focus, roundIndex: 1)
+
+        // Then - 净时长以计划时长封顶，状态为 earlyCompleted（时长计入、不算完成番茄）
+        XCTAssertEqual(orphan.actualDuration, 1500, accuracy: 1.0,
+                       "超时残留会话的净时长必须封顶到计划时长")
+        XCTAssertEqual(orphan.status, SessionStatus.earlyCompleted.rawValue)
+        XCTAssertTrue(orphan.countsTowardDuration)
+    }
+
+    /// 刚开始（净时长 < 1 秒）就暂停的孤儿 → 不制造空会话
+    func testStartFocusSession_GivenZeroTimeOrphan_ThenDiscarded() {        // Given - 创建后立即暂停（净时长为 0）
+        let orphan = focusService.startFocusSession(
+            task: nil, plannedDuration: 1500, phase: .focus, roundIndex: 1)
+        focusService.pauseSession(orphan, activeSeconds: 0)
+
+        // When
+        _ = focusService.startFocusSession(
+            task: nil, plannedDuration: 1500, phase: .focus, roundIndex: 1)
+
+        // Then - abandoned，不进入时长口径
+        let fetched = focusService.fetchTodaysSessions().first { $0.id == orphan.id }!
+        XCTAssertEqual(fetched.status, SessionStatus.abandoned.rawValue)
+        XCTAssertFalse(fetched.countsTowardDuration)
+    }
+
+    func testDiscardSession_ThenDurationNotCountedButReasonKept() {
+        // Given - 运行中的会话
+        let session = focusService.startFocusSession(
+            task: nil, plannedDuration: 1500, phase: .focus, roundIndex: 1)
+
+        // When - 系统原因丢弃
+        focusService.discardSession(session, reason: "app_reset")
+
+        // Then - abandoned、原因保留、不计时长
+        let fetched = focusService.fetchTodaysSessions().first!
+        XCTAssertEqual(fetched.status, SessionStatus.abandoned.rawValue)
+        XCTAssertEqual(fetched.interruptionReason, "app_reset")
+        XCTAssertFalse(fetched.countsTowardDuration)
+        XCTAssertTrue(focusService.fetchAllSessionsForDuration().isEmpty)
     }
 }

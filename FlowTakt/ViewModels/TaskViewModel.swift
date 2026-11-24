@@ -148,10 +148,11 @@ final class TaskViewModel: ObservableObject {
     ///   - estimatedPomodoros: 预计需要几个番茄钟
     ///   - priority: 优先级（1=低, 2=中, 3=高）
     ///   - dueDate: 截止日期（可选）
-    func createTask(title: String, notes: String?, estimatedPomodoros: Int16, priority: Int16, dueDate: Date?, recurrenceRule: String? = nil) {
-        guard !title.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+    @discardableResult
+    func createTask(title: String, notes: String?, estimatedPomodoros: Int16, priority: Int16, dueDate: Date?, recurrenceRule: String? = nil) -> Task? {
+        guard !title.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
 
-        _ = taskService.createTask(
+        let newTask = taskService.createTask(
             title: title,
             notes: notes,
             estimatedPomodoros: estimatedPomodoros,
@@ -162,6 +163,7 @@ final class TaskViewModel: ObservableObject {
 
         loadTasks()
         showCreateSheet = false
+        return newTask
     }
 
     /// 更新任务（通过 Service 层，避免 View 直接修改 NSManagedObject）

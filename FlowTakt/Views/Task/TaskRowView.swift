@@ -31,6 +31,19 @@ struct TaskRowView: View {
                     if let dueDate = task.dueDate {
                         dueDateBadge(dueDate)
                     }
+
+                    // 标签徽章（用户反馈 2026-11-19：任务↔标签关系可视化，最多展示 3 个）
+                    if !sortedTags.isEmpty {
+                        HStack(spacing: 4) {
+                            ForEach(sortedTags.prefix(3)) { tag in
+                                tagBadge(tag)
+                            }
+                            if sortedTags.count > 3 {
+                                Text("+\(sortedTags.count - 3)")
+                                    .font(.caption2)
+                            }
+                        }
+                    }
                 }
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -68,6 +81,28 @@ struct TaskRowView: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
         .background(Color(.systemGray6))
+        .cornerRadius(4)
+    }
+
+    // MARK: - Tag Badge
+
+    /// 任务标签按名称排序（与统计归属的 resolvedTag「按名称取首个」判据一致，首个标签即主分类）
+    private var sortedTags: [Tag] {
+        task.tags.sorted { ($0.name) < ($1.name) }
+    }
+
+    private func tagBadge(_ tag: Tag) -> some View {
+        let color = tag.colorHex.flatMap { Color(hex: $0) } ?? Color(hex: TagPalette.colors[0])
+        return HStack(spacing: 3) {
+            Circle()
+                .fill(color)
+                .frame(width: 6, height: 6)
+            Text(tag.name)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(color.opacity(0.14))
         .cornerRadius(4)
     }
 
@@ -113,6 +148,10 @@ struct TaskRowView: View {
         if let due = task.dueDate {
             parts.append(formattedDueDate(due))
         }
+        // 无障碍：标签名并入整行朗读（与可见内容一致）
+        for tag in sortedTags.prefix(3) {
+            parts.append(tag.name)
+        }
         return parts.joined(separator: "，")
     }
 
@@ -140,7 +179,7 @@ extension TaskRowView {
     static func previewTask() -> Task {
         let context = PersistenceController.preview.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "完成项目报告"
         task.estimatedPomodoros = 4
         task.completedPomodoros = 1

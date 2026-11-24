@@ -27,6 +27,9 @@ struct StatsOverviewView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
+            // 无障碍（2026-10-14）：分段控件补用途标签
+            .accessibilityLabel(L10n.shared.统计)
+            .accessibilityIdentifier("topTabPicker")
 
             switch selectedTab {
             case .stats:
@@ -35,8 +38,23 @@ struct StatsOverviewView: View {
                 AchievementListView()
             }
         }
+        // 左右滑动切换顶部「统计 / 成就」标签（与竖向滚动不冲突）
+        .swipeToSwitchTab(
+            onSwipeLeft: { moveOverviewTab(by: 1) },
+            onSwipeRight: { moveOverviewTab(by: -1) }
+        )
         // v1.3.4p：iPad 上 NavigationSplitView detail 内的 frame(maxWidth:) 失效，
         // 统计/列表在 iPad 保持自然宽度（参考邮件/备忘录 iPad 设计）
+    }
+
+    /// 按方向切换顶部标签（向左 = 下一个，向右 = 上一个），边界处夹紧不回环
+    private func moveOverviewTab(by direction: Int) {
+        let order = OverviewTab.allCases
+        guard let idx = order.firstIndex(of: selectedTab) else { return }
+        let newIdx = min(max(idx + direction, 0), order.count - 1)
+        if newIdx != idx {
+            selectedTab = order[newIdx]
+        }
     }
 }
 

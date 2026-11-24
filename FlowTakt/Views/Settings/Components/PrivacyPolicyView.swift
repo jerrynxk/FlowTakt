@@ -91,9 +91,13 @@ struct PrivacyPolicyView: View {
             }
             .padding()
         }
+        .disableBounce()
         .navigationTitle(L10n.shared.隐私政策)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        // 修复（2026-10-15 审查）：父级 SettingsView 统一页头规范后隐藏导航栏，
+        // pushed 子页必须显式恢复，否则「确定」按钮所在工具栏不可见
+        .toolbar(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(L10n.shared.确定) {
@@ -108,6 +112,9 @@ struct PrivacyPolicyView: View {
             Text(title)
                 .font(.headline)
                 .foregroundColor(.primary)
+                // 无障碍补齐（2026-11-02）：11 个章节标题补二级标题语义 ——
+                // 长文档此前无法通过「转子 → 标题」快速跳转到某一节
+                .accessibilityHeading(.h2)
             Text(content)
                 .font(.subheadline)
                 .foregroundColor(.secondary)

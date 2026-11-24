@@ -46,7 +46,7 @@ final class HabitViewModelTests: XCTestCase {
 
     func testCreateHabit_GivenValidInput_ThenCallsServiceAndLoadsHabits() {
         let habit = Habit(context: persistence.viewContext)
-        habit.id = UUID()
+        habit.storageId = UUID()
         habit.name = "每天跑步"
         habit.frequency = "daily"
         habit.targetCount = 1
@@ -82,7 +82,7 @@ final class HabitViewModelTests: XCTestCase {
 
     func testDeleteHabit_ThenRemovesFromList() {
         let habit = Habit(context: persistence.viewContext)
-        habit.id = UUID()
+        habit.storageId = UUID()
         habit.name = "待删除习惯"
         habit.frequency = "daily"
         habit.targetCount = 1
@@ -104,7 +104,7 @@ final class HabitViewModelTests: XCTestCase {
 
     func testDeleteHabit_WhenIsSelectedHabit_ThenClearsSelection() {
         let habit = Habit(context: persistence.viewContext)
-        habit.id = UUID()
+        habit.storageId = UUID()
         habit.name = "选中习惯"
         habit.frequency = "daily"
         habit.targetCount = 1
@@ -130,7 +130,7 @@ final class HabitViewModelTests: XCTestCase {
 
     func testCheckIn_ThenCallsServiceAndRefreshes() {
         let habit = Habit(context: persistence.viewContext)
-        habit.id = UUID()
+        habit.storageId = UUID()
         habit.name = "读书"
         habit.frequency = "daily"
         habit.targetCount = 1
@@ -156,7 +156,7 @@ final class HabitViewModelTests: XCTestCase {
     func testCheckIn_DoubleTapWithinWindow_ThenOnlyOneServiceCall() {
         // Given
         let habit = Habit(context: persistence.viewContext)
-        habit.id = UUID()
+        habit.storageId = UUID()
         habit.name = "喝水"
         habit.frequency = "daily"
         habit.targetCount = 1
@@ -187,7 +187,7 @@ final class HabitViewModelTests: XCTestCase {
     func testReloadHeatmap_ThenAggregatesCountsByDay() {
         // Given
         let habit = Habit(context: persistence.viewContext)
-        habit.id = UUID()
+        habit.storageId = UUID()
         habit.name = "聚合习惯"
         habit.frequency = "daily"
         habit.targetCount = 1
@@ -199,14 +199,14 @@ final class HabitViewModelTests: XCTestCase {
 
         let today = Date()
         let record1 = HabitRecord(context: persistence.viewContext)
-        record1.id = UUID()
+        record1.storageId = UUID()
         record1.date = today
         record1.count = 1
         record1.habit = habit
         record1.createdAt = Date()
 
         let record2 = HabitRecord(context: persistence.viewContext)
-        record2.id = UUID()
+        record2.storageId = UUID()
         record2.date = today
         record2.count = 2
         record2.habit = habit
@@ -241,7 +241,7 @@ final class HabitViewModelTests: XCTestCase {
 
     func testRemoveCheckIn_ThenCallsServiceAndRefreshes() {
         let habit = Habit(context: persistence.viewContext)
-        habit.id = UUID()
+        habit.storageId = UUID()
         habit.name = "阅读"
         habit.frequency = "daily"
         habit.targetCount = 1
@@ -252,7 +252,7 @@ final class HabitViewModelTests: XCTestCase {
         try? persistence.viewContext.save()
 
         let record = HabitRecord(context: persistence.viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.date = Date()
         record.count = 1
         record.habit = habit
@@ -272,7 +272,7 @@ final class HabitViewModelTests: XCTestCase {
 
     func testRecordsForHabit_GivenDays_ThenReturnsFilteredRecords() {
         let habit = Habit(context: persistence.viewContext)
-        habit.id = UUID()
+        habit.storageId = UUID()
         habit.name = "锻炼"
         habit.frequency = "daily"
         habit.targetCount = 1
@@ -283,7 +283,7 @@ final class HabitViewModelTests: XCTestCase {
         try? persistence.viewContext.save()
 
         let record = HabitRecord(context: persistence.viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.date = Date()
         record.count = 1
         record.habit = habit
@@ -305,7 +305,7 @@ final class HabitViewModelTests: XCTestCase {
 
     func testDayHasRecord_WhenRecordExists_ThenReturnsTrue() {
         let habit = Habit(context: persistence.viewContext)
-        habit.id = UUID()
+        habit.storageId = UUID()
         habit.name = "冥想"
         habit.frequency = "daily"
         habit.targetCount = 1
@@ -316,7 +316,7 @@ final class HabitViewModelTests: XCTestCase {
         try? persistence.viewContext.save()
 
         let record = HabitRecord(context: persistence.viewContext)
-        record.id = UUID()
+        record.storageId = UUID()
         record.date = Date()
         record.count = 1
         record.habit = habit
@@ -333,7 +333,7 @@ final class HabitViewModelTests: XCTestCase {
 
     func testDayHasRecord_WhenNoRecord_ThenReturnsFalse() {
         let habit = Habit(context: persistence.viewContext)
-        habit.id = UUID()
+        habit.storageId = UUID()
         habit.name = "无打卡习惯"
         habit.frequency = "daily"
         habit.targetCount = 1
@@ -357,7 +357,7 @@ final class HabitViewModelTests: XCTestCase {
 
     func testDatabaseWillReset_ClearsHabitsAndSelection() {
         let habit = Habit(context: persistence.viewContext)
-        habit.id = UUID()
+        habit.storageId = UUID()
         habit.name = "习惯"
         habit.frequency = "daily"
         habit.targetCount = 1
@@ -384,7 +384,7 @@ final class HabitViewModelTests: XCTestCase {
 
     func testLoadHabits_WhenServiceHasHabits_ThenPopulatesHabits() {
         let habit = Habit(context: persistence.viewContext)
-        habit.id = UUID()
+        habit.storageId = UUID()
         habit.name = "习惯A"
         habit.frequency = "daily"
         habit.targetCount = 1

@@ -63,6 +63,8 @@ struct PointsDisplayView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title) \(points)")
+        // 无障碍补齐（2026-10-15 审查 P2-U1）：积分卡片标题按 .h2 朗读分组
+        .accessibilityHeading(.h2)
     }
 }
 
@@ -81,6 +83,8 @@ struct PointsDisplayView_Previews: PreviewProvider {
             .padding()
             .background(Color.appBackground)
             .previewLayout(.sizeThatFits)
-    }
+            .environmentObject(L10n.shared)
+    
+}
 }
 #endif

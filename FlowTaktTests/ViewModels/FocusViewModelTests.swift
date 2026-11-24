@@ -30,7 +30,7 @@ final class FocusViewModelTests: XCTestCase {
     private func makeMockSession(id: UUID = UUID(), status: SessionStatus = .running) -> FocusSession {
         let context = persistenceController.viewContext
         let session = FocusSession(context: context)
-        session.id = id
+        session.storageId = id
         session.startTime = Date()
         session.plannedDuration = 1500
         session.actualDuration = status == .completed ? 1500 : 0
@@ -69,6 +69,11 @@ final class FocusViewModelTests: XCTestCase {
     }
 
     override func tearDown() {
+        // 修复（2026-10-14 T4）：本类多个用例写 focusDuration / shortBreakDuration /
+        // longBreakDuration，残留会污染后续用例（断言默认值）与 resetDatabase 的
+        // iCloudSyncEnabled 判定 —— 按执行顺序造成确定性假红。
+        let domain = Bundle.main.bundleIdentifier ?? ""
+        UserDefaults.standard.removePersistentDomain(forName: domain)
         viewModel = nil
         mockFocusService = nil
         timerManager = nil
@@ -146,7 +151,7 @@ final class FocusViewModelTests: XCTestCase {
         // Given
         let context = persistenceController.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "关联任务"
         task.status = TaskStatus.active.rawValue
 
@@ -352,32 +357,48 @@ final class FocusViewModelTests: XCTestCase {
     // MARK: - 白噪音
     // ========================================================================
 
-    func testToggleWhiteNoise_WhenOff_ThenStartsWhiteNoise() {
-        // Given
-        XCTAssertFalse(viewModel.isWhiteNoiseOn)
+    /// 2026-11-22 语义调整：白噪音开关是纯偏好开关，只切 isWhiteNoiseEnabled，
+    /// 不即时播放/停止音频、不改运行时状态 isWhiteNoiseOn（由 startFocus 等生命周期路径维护）。
+    func testToggleWhiteNoise_OnlyTogglesPreference_NoImmediateAudio() {
+        // Given：显式写 false 建立"关"起点。
+        // 注意：源码默认值是 true（?? true），仅 removeObject 会得到"开"，故必须显式 set(false)。
+        UserDefaults.standard.set(false, forKey: FocusViewModel.whiteNoiseAutoPlayKey)
+        XCTAssertFalse(viewModel.isWhiteNoiseEnabled)
 
         // When
         viewModel.toggleWhiteNoise()
 
-        // Then
-        XCTAssertTrue(viewModel.isWhiteNoiseOn)
-        XCTAssertTrue(mockAudioService.toggleWhiteNoiseCalled)
-        XCTAssertTrue(mockAudioService.isWhiteNoisePlaying)
+        // Then：偏好切到开，但不碰音频
+        XCTAssertTrue(viewModel.isWhiteNoiseEnabled)
+        XCTAssertTrue(UserDefaults.standard.object(forKey: FocusViewModel.whiteNoiseAutoPlayKey) as? Bool ?? false)
+        XCTAssertFalse(mockAudioService.toggleWhiteNoiseCalled, "开关不应立即播放音频")
+        XCTAssertFalse(mockAudioService.isWhiteNoisePlaying, "未开始专注时打开开关不得出声")
+        XCTAssertFalse(viewModel.isWhiteNoiseOn, "运行时播放状态不应被开关改动")
     }
 
-    func testToggleWhiteNoise_WhenOn_ThenStopsWhiteNoise() {
-        // Given
-        viewModel.toggleWhiteNoise()
-        XCTAssertTrue(viewModel.isWhiteNoiseOn)
+    /// 再切一次：偏好回到关，音频同样不受影响
+    func testToggleWhiteNoise_Twice_BackToOff() {
+        UserDefaults.standard.set(false, forKey: FocusViewModel.whiteNoiseAutoPlayKey)
+        viewModel.toggleWhiteNoise()   // 关 → 开
+        XCTAssertTrue(viewModel.isWhiteNoiseEnabled)
         mockAudioService.toggleWhiteNoiseCalled = false
 
-        // When
+        viewModel.toggleWhiteNoise()   // 开 → 关
+        XCTAssertFalse(viewModel.isWhiteNoiseEnabled)
+        XCTAssertFalse(mockAudioService.toggleWhiteNoiseCalled, "关闭开关也不应即时停音频")
+    }
+
+    /// 回归（2026-11-22 bug）：toggleWhiteNoise 虽写的是非 @Published 计算属性，
+    /// 但必须发 objectWillChange，否则工具栏图标/开关行读屏状态停在旧值（界面无反应但实际已生效）。
+    func testToggleWhiteNoise_ThenPublishesObjectWillChange() {
+        UserDefaults.standard.set(false, forKey: FocusViewModel.whiteNoiseAutoPlayKey)
+        var willChangeCount = 0
+        let sub = viewModel.objectWillChange.sink { _ in willChangeCount += 1 }
+
         viewModel.toggleWhiteNoise()
 
-        // Then
-        XCTAssertFalse(viewModel.isWhiteNoiseOn)
-        XCTAssertTrue(mockAudioService.toggleWhiteNoiseCalled)
-        XCTAssertFalse(mockAudioService.isWhiteNoisePlaying)
+        XCTAssertEqual(willChangeCount, 1, "写偏好后必须发 objectWillChange 触发视图重绘（否则 UI 不刷新）")
+        withExtendedLifetime(sub) { }
     }
 
     // ========================================================================
@@ -388,7 +409,7 @@ final class FocusViewModelTests: XCTestCase {
         // Given
         let context = persistenceController.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "测试任务"
         task.status = TaskStatus.active.rawValue
 
@@ -403,7 +424,7 @@ final class FocusViewModelTests: XCTestCase {
         // Given
         let context = persistenceController.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "测试任务"
         task.status = TaskStatus.active.rawValue
         viewModel.selectTask(task)
@@ -458,7 +479,7 @@ final class FocusViewModelTests: XCTestCase {
     func testHandleTimerFinished_DoesNotCallIncrementCompletedPomodoros() {
         // Given - 设置 mock，跟踪 incrementCompletedPomodoros 是否被调用
         var incrementCalled = false
-        mockTaskService.incrementCompletedPomodorosHandler = { _ in
+        mockTaskService.incrementCompletedPomodorosCalledHandler = { _ in
             incrementCalled = true
         }
 
@@ -635,9 +656,16 @@ final class FocusViewModelTests: XCTestCase {
         }
         viewModel.startFocus(phase: .focus)
 
-        // 模拟暂停一段时间（结算到 totalPausedDuration）
+        // 复审修复（2026-10-14）：净专注时长改为 focusService.activeElapsedSeconds 单一真值源后，
+        // 暂停/恢复必须同步落库 —— 否则持久化侧看不到这次暂停，断言会失真。
+        // 夹具自洽：本用例把 startTime 回拨了 100 秒模拟「已专注一段时间」，
+        // updatedAt 是「本段计时起点」标记，必须同步回拨，否则净专注秒恒从 0 起算。
+        mockSession.updatedAt = mockSession.startTime
+        mockFocusService.pauseSession(mockSession,
+                                      activeSeconds: mockFocusService.activeElapsedSeconds(for: mockSession))
         timerManager.pause()
         RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        mockFocusService.resumeSession(mockSession)
         timerManager.resume()
 
         // When
@@ -663,6 +691,9 @@ final class FocusViewModelTests: XCTestCase {
     func testSwitchPhase_WhenIdle_ThenUpdatesActivePhaseAndDisplay() {
         // Given - 默认 activePhase == .focus
         XCTAssertEqual(viewModel.currentPhase, .focus)
+        // 修复（2026-10-14 T4）：本用例原先依赖其它用例残留写入的 shortBreakDuration
+        // （tearDown 清理 UserDefaults 后暴露）→ 改为自给自足。
+        UserDefaults.standard.set(AppConstants.defaultShortBreakDuration, forKey: "shortBreakDuration")
 
         // When
         viewModel.switchPhase(.shortBreak)
@@ -784,7 +815,7 @@ final class FocusViewModelTests: XCTestCase {
         // Given
         let context = persistenceController.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "测试任务"
         task.status = TaskStatus.active.rawValue
         viewModel.selectTask(task)
@@ -837,14 +868,17 @@ final class FocusViewModelTests: XCTestCase {
         // Given：会话 startTime 远早于 now，plannedDuration 已耗尽
         let context = persistenceController.viewContext
         let session = FocusSession(context: context)
-        session.id = UUID()
+        session.storageId = UUID()
         session.startTime = Date().addingTimeInterval(-1600)   // 已超过 1500s 计划时长
         session.plannedDuration = 1500
         session.phase = FocusPhase.focus.rawValue
         session.roundIndex = 1
         session.status = SessionStatus.running.rawValue
         session.createdAt = Date()
-        session.updatedAt = Date()
+        // 修复（2026-10-14）：恢复判定改用持久化净专注秒数（activeElapsedSeconds）后夹具必须自洽 ——
+        // updatedAt 是「本段计时起点」标记，只回退 startTime 会让 activeElapsed≈0，
+        // 被误判成「刚开始」而非「已超时」。此处需与 startTime 同步回退。
+        session.updatedAt = Date().addingTimeInterval(-1600)
 
         // needsRestore 在 init 时经 focusService.getCurrentSession() 读取，
         // 因此必须先设置 currentSessionToReturn 再重建 VM（审查修复：原写法 init 后设置无效）
@@ -870,5 +904,147 @@ final class FocusViewModelTests: XCTestCase {
         XCTAssertTrue(completed, "remaining<=0 时应完成会话")
         XCTAssertNil(viewModel.currentSession)
         XCTAssertEqual(viewModel.timerState, .idle)
+    }
+
+    // MARK: - 外部控制状态对齐（2026-10-15）
+    // 背景/冷启动执行 Live Activity 按钮时 FocusView 未上屏 → restorePendingSessionIfNeeded
+    // 不执行 → timerState 停留 .idle → pause/resume 的 guard 静默吞掉点击。
+    // ensureOperableStateForExternalControl 在控制入口做最小对齐（仅计时核心，无前台恢复副作用）。
+
+    /// 重建 VM 以让 init 重新计算 needsRestore（必须在设置 mock 的 currentSessionToReturn 之后调用）
+    private func recreateViewModel() {
+        viewModel = FocusViewModel(
+            focusService: mockFocusService,
+            timerManager: timerManager,
+            notificationService: mockNotificationService,
+            appBlockerService: mockAppBlockerService,
+            audioService: mockAudioService,
+            achievementService: mockAchievementService,
+            taskService: mockTaskService,
+            speechService: mockSpeechService
+        )
+    }
+
+    func testEnsureOperableState_RunningSession_AlignsToRunning() {
+        let session = makeMockSession(status: .running)
+        mockFocusService.currentSessionToReturn = session
+        recreateViewModel()
+        XCTAssertEqual(viewModel.timerState, .idle, "前置：冷启动未对齐时应为 idle")
+
+        viewModel.ensureOperableStateForExternalControl()
+
+        XCTAssertEqual(viewModel.timerState, .running, "对齐后 pauseFocus 不再被 guard 吞掉")
+        XCTAssertNotNil(viewModel.currentSession)
+    }
+
+    func testEnsureOperableState_PausedSession_AlignsToPaused() {
+        let session = makeMockSession(status: .paused)
+        mockFocusService.currentSessionToReturn = session
+        recreateViewModel()
+
+        viewModel.ensureOperableStateForExternalControl()
+
+        XCTAssertEqual(viewModel.timerState, .paused, "暂停中会话应对齐为 paused（供 resumeFocus 操作）")
+    }
+
+    func testEnsureOperableState_NoPendingSession_DoesNothing() {
+        mockFocusService.currentSessionToReturn = nil
+        recreateViewModel()
+
+        viewModel.ensureOperableStateForExternalControl()
+
+        XCTAssertEqual(viewModel.timerState, .idle)
+        XCTAssertNil(viewModel.currentSession)
+    }
+
+    func testEnsureOperableState_AlreadyOperable_SkipsAlignment() {
+        // 前台真实链路已开始专注 → timerState = .running，对齐不应干扰
+        let session = makeMockSession(status: .running)
+        mockFocusService.startFocusSessionHandler = { _, _, _, _ in session }
+        viewModel.startFocus(phase: .focus)
+        XCTAssertEqual(viewModel.timerState, .running)
+
+        viewModel.ensureOperableStateForExternalControl()
+
+        XCTAssertEqual(viewModel.timerState, .running, "已运行态不应被对齐改动")
+    }
+
+    /// 集成：冷启动点「暂停」的完整链路 —— 对齐 + pauseFocus 必须生效并落库
+    func testEnsureOperableState_ThenPauseFocus_PersistsPaused() {
+        let session = makeMockSession(status: .running)
+        mockFocusService.currentSessionToReturn = session
+        recreateViewModel()
+        XCTAssertEqual(viewModel.timerState, .idle)
+
+        viewModel.ensureOperableStateForExternalControl()
+        viewModel.pauseFocus()
+
+        XCTAssertEqual(viewModel.timerState, .paused, "对齐后点击暂停必须生效（此前被 guard 静默吞掉）")
+        XCTAssertEqual(session.status, SessionStatus.paused.rawValue, "暂停状态应落库")
+    }
+
+    /// 过期会话对齐：完成落库，不残留 running（与前台恢复同判据）
+    func testEnsureOperableState_ExpiredSession_CompletesIt() {
+        let context = persistenceController.viewContext
+        let session = FocusSession(context: context)
+        session.storageId = UUID()
+        session.startTime = Date().addingTimeInterval(-1600)
+        session.plannedDuration = 1500
+        session.phase = FocusPhase.focus.rawValue
+        session.roundIndex = 1
+        session.status = SessionStatus.running.rawValue
+        session.createdAt = Date()
+        session.updatedAt = Date().addingTimeInterval(-1600)   // 与 startTime 同步回退（净专注秒判据）
+        mockFocusService.currentSessionToReturn = session
+        recreateViewModel()
+
+        var completed = false
+        mockFocusService.completeSessionHandler = { _, _ in completed = true }
+
+        viewModel.ensureOperableStateForExternalControl()
+
+        XCTAssertTrue(completed, "过期会话应对齐为完成")
+        XCTAssertNil(viewModel.currentSession)
+        XCTAssertEqual(viewModel.timerState, .idle)
+    }
+
+    // ========================================================================
+    // MARK: - 白噪音记忆（用户反馈 2026-11-19）
+    // ========================================================================
+
+    /// 默认（未设置偏好）→ 专注开始自动播放白噪音（既有行为）
+    func testStartFocus_GivenNoPreference_ThenWhiteNoiseAutoPlays() {
+        // 显式清除偏好，避免依赖用例执行顺序（其它用例的 toggle 会写入该键）
+        UserDefaults.standard.removeObject(forKey: FocusViewModel.whiteNoiseAutoPlayKey)
+        mockFocusService.sessions = [makeMockSession()]
+
+        viewModel.startFocus(phase: .focus)
+
+        XCTAssertTrue(mockAudioService.isWhiteNoisePlaying, "默认应自动播放白噪音")
+        XCTAssertTrue(viewModel.isWhiteNoiseOn)
+    }
+
+    /// 用户关闭过白噪音 → 下次开始专注不再自动播放
+    func testStartFocus_GivenUserTurnedOffWhiteNoise_ThenDoesNotAutoPlay() {
+        UserDefaults.standard.set(false, forKey: FocusViewModel.whiteNoiseAutoPlayKey)
+        mockFocusService.sessions = [makeMockSession()]
+
+        viewModel.startFocus(phase: .focus)
+
+        XCTAssertFalse(mockAudioService.isWhiteNoisePlaying,
+                       "用户关闭后不得再自动播放（应记住选择）")
+        XCTAssertFalse(viewModel.isWhiteNoiseOn)
+    }
+
+    /// 手动开关会把选择写回偏好（2026-11-22 修正）：
+    /// 源码默认值为 true，显式从 false 起步 → 切一次为 true，再切回 false。
+    func testToggleWhiteNoise_ThenChoiceIsPersisted() {
+        UserDefaults.standard.set(false, forKey: FocusViewModel.whiteNoiseAutoPlayKey)
+
+        viewModel.toggleWhiteNoise()   // 关 → 开
+        XCTAssertEqual(UserDefaults.standard.object(forKey: FocusViewModel.whiteNoiseAutoPlayKey) as? Bool, true)
+
+        viewModel.toggleWhiteNoise()   // 开 → 关
+        XCTAssertEqual(UserDefaults.standard.object(forKey: FocusViewModel.whiteNoiseAutoPlayKey) as? Bool, false)
     }
 }

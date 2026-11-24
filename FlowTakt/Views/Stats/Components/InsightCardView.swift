@@ -20,6 +20,8 @@ struct InsightCardView: View {
                 Text(L10n.shared.数据洞察)
                     .font(.headline)
                     .foregroundColor(.primary)
+                    // 无障碍（2026-10-14）：卡片标题标记为二级标题
+                    .accessibilityHeading(.h2)
                 Spacer()
             }
             .padding(.horizontal, 16)
@@ -101,6 +103,8 @@ struct InsightCardView_Previews: PreviewProvider {
             ))
             .padding()
             .background(Color.appBackground)
-    }
+            .environmentObject(L10n.shared)
+    
+}
 }
 #endif

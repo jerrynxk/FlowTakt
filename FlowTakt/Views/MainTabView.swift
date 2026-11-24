@@ -2,15 +2,10 @@ import SwiftUI
 
 // MARK: - 主标签页视图
 
-struct MainTabView: View {
-    @EnvironmentObject var focusViewModel: FocusViewModel
-    @EnvironmentObject var taskViewModel: TaskViewModel
-    @EnvironmentObject var statsViewModel: StatsViewModel
+// 修复（2026-10-14 P2）：移除未使用的 @EnvironmentObject —— FocusViewModel 每 0.1s
+    // 触发 objectWillChange，订阅它会让整个 TabView 每秒重算约 10 次。
+    struct MainTabView: View {
     @EnvironmentObject var settingsViewModel: SettingsViewModel
-    @EnvironmentObject var achievementViewModel: AchievementViewModel
-    @EnvironmentObject var scheduleViewModel: ScheduleViewModel
-    @EnvironmentObject var habitViewModel: HabitViewModel
-    @EnvironmentObject var timeRecordViewModel: TimeRecordViewModel
     @EnvironmentObject var l10n: L10n
     @EnvironmentObject var appDependency: AppDependency
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -88,6 +83,8 @@ struct MainTabView: View {
         }
         .navigationTitle("FlowTakt")
         .listStyle(.sidebar)
+        // 滚动统一调整（2026-11-02）：iPad 侧边栏同样禁用弹性 + 柔化撞停减速
+        .disableBounce()
     }
 
     private func sidebarItem(_ tab: MainTab, title: String, icon: String) -> some View {

@@ -44,11 +44,15 @@ struct TaskFilterBar: View {
                                             : Color.clear, lineWidth: 1)
                             )
                     }
+                    // 无障碍（2026-10-14）：筛选 chip 补选中态播报（此前 VoiceOver 无法区分当前筛选）
+                    .accessibilityLabel(filter.label)
+                    .accessibilityAddTraits(selectedPriority == filter.priority ? .isSelected : [])
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
         }
+        .disableBounce()
     }
 }
 

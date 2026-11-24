@@ -16,7 +16,8 @@ final class MockTaskService: TaskServiceProtocol {
     var updateTaskCalledHandler: ((Task) -> Void)?
     var deleteTaskCalledHandler: ((Task) -> Void)?
     var incrementCompletedPomodorosCalledHandler: ((Task) -> Void)?
-    var incrementCompletedPomodorosHandler: ((Task) -> Void)?
+    // 修复（2026-10-15 审查 P2-S3）：与 incrementCompletedPomodorosCalledHandler 重复的同义字段已删除，
+    // 原引用处（FocusViewModelTests）已迁移到 CalledHandler 命名
 
     // 向后兼容：旧版 TaskViewModelTests / FocusViewModelTests
     var createTaskHandler: ((String, String?, Int16, Int16, Date?, String?) -> Task)?
@@ -30,7 +31,11 @@ final class MockTaskService: TaskServiceProtocol {
         if let handler = createTaskHandler {
             return handler(title, notes, estimatedPomodoros, priority, dueDate, recurrenceRule)
         }
-        return tasks.first!
+        // 修复（2026-10-14 审查 T7）：缺配置时给出可读失败原因，而非 SIGTRAP
+        guard let first = tasks.first else {
+            fatalError("MockTaskService 未配置 tasks 且无 createTaskHandler —— 请在测试中先注入任务")
+        }
+        return first
     }
 
     /// 必须实现与协议一致的完整签名（含 recurrenceRule 参数），避免走扩展默认实现递归。
@@ -71,7 +76,6 @@ final class MockTaskService: TaskServiceProtocol {
 
     func incrementCompletedPomodoros(for task: Task) {
         incrementCompletedPomodorosCalledHandler?(task)
-        incrementCompletedPomodorosHandler?(task)
         task.completedPomodoros += 1
     }
 }
@@ -88,12 +92,37 @@ final class MockFocusService: FocusServiceProtocol {
     var abandonSessionHandler: ((FocusSession) -> Void)?
     var currentSessionToReturn: FocusSession?
     var fetchTodaysSessionsResult: [FocusSession]?
+    var fetchTodayFocusSessionsResult: [FocusSession]?
 
     func startFocusSession(task: Task?, plannedDuration: TimeInterval, phase: FocusPhase, roundIndex: Int16) -> FocusSession {
         if let handler = startFocusSessionHandler {
             return handler(task, plannedDuration, phase, roundIndex)
         }
-        return sessions.first!
+        // 修复（2026-10-14 审查 T7）：缺配置时给出可读的失败原因而非 SIGTRAP
+        guard let first = sessions.first else {
+            fatalError("MockFocusService 未配置 sessions 且无 startFocusSessionHandler —— 请在测试中先注入会话")
+        }
+        return first
+    }
+
+    // MARK: - 暂停 / 恢复（与真实实现同语义：状态 + 净专注秒 + updatedAt 标记）
+
+    func pauseSession(_ session: FocusSession, activeSeconds: TimeInterval) {
+        session.status = SessionStatus.paused.rawValue
+        session.actualDuration = max(0, activeSeconds)
+        session.updatedAt = Date()
+    }
+
+    func resumeSession(_ session: FocusSession) {
+        session.status = SessionStatus.running.rawValue
+        session.updatedAt = Date()
+    }
+
+    func activeElapsedSeconds(for session: FocusSession) -> TimeInterval {
+        if session.status == SessionStatus.paused.rawValue {
+            return max(0, session.actualDuration)
+        }
+        return max(0, session.actualDuration) + max(0, Date().timeIntervalSince(session.updatedAt))
     }
 
     func completeSession(_ session: FocusSession, actualDuration: TimeInterval? = nil) {
@@ -101,6 +130,11 @@ final class MockFocusService: FocusServiceProtocol {
         session.status = SessionStatus.completed.rawValue
         session.endTime = Date()
         session.actualDuration = actualDuration ?? session.plannedDuration
+        // 对齐真实实现语义（2026-10-15 审查 P1-011）：仅专注阶段发积分，
+        // 否则依赖 Mock 的 VM 测试会在「休息完成」场景与真实集成产生分叉（假绿）
+        session.earnedPoints = session.phase == FocusPhase.focus.rawValue
+            ? Int16(AppConstants.pointsPerCompletedPomodoro)
+            : 0
     }
 
     func interruptSession(_ session: FocusSession) {
@@ -111,8 +145,21 @@ final class MockFocusService: FocusServiceProtocol {
 
     func abandonSession(_ session: FocusSession, reason: String?) {
         abandonSessionHandler?(session)
+        // 用户反馈 2026-11-17：与真实实现对齐 —— 提前结束保留净专注时长，
+        // 状态为 earlyCompleted（计入时长、不计番茄/积分）。
+        session.actualDuration = activeElapsedSeconds(for: session)
+        session.status = SessionStatus.earlyCompleted.rawValue
+        session.interruptionReason = reason
+        session.endTime = Date()
+        session.earnedPoints = 0
+    }
+
+    func discardSession(_ session: FocusSession, reason: String?) {
+        // 系统/配置原因丢弃：与真实实现对齐，保持 abandoned、不写净时长、不计统计。
         session.status = SessionStatus.abandoned.rawValue
         session.interruptionReason = reason
+        session.endTime = Date()
+        session.earnedPoints = 0
     }
 
     func getCurrentSession() -> FocusSession? {
@@ -122,6 +169,14 @@ final class MockFocusService: FocusServiceProtocol {
     func fetchTodaysSessions() -> [FocusSession] {
         if let result = fetchTodaysSessionsResult { return result }
         return sessions.filter { Calendar.current.isDateInToday($0.startTime) }
+    }
+
+    /// 修复（2026-10-14 审查 P1-1 配套）：与真实实现同口径 —— 今日「专注阶段」会话
+    func fetchTodayFocusSessions() -> [FocusSession] {
+        if let result = fetchTodayFocusSessionsResult { return result }
+        return sessions.filter {
+            Calendar.current.isDateInToday($0.startTime) && $0.phase == FocusPhase.focus.rawValue
+        }
     }
 
     func fetchCompletedSessions(from startDate: Date, to endDate: Date) -> [FocusSession] {
@@ -140,9 +195,22 @@ final class MockFocusService: FocusServiceProtocol {
         }
     }
 
-    func setAchievementService(_ service: AchievementServiceProtocol) {
-        // Mock: 无需实际操作
+    /// 时长统计口径（completed + earlyCompleted），与 FocusService 同语义
+    func fetchSessionsForDuration(from startDate: Date, to endDate: Date) -> [FocusSession] {
+        sessions.filter {
+            $0.countsTowardDuration &&
+            $0.phase == FocusPhase.focus.rawValue &&
+            $0.startTime >= startDate && $0.startTime < endDate
+        }
     }
+
+    func fetchAllSessionsForDuration() -> [FocusSession] {
+        sessions.filter {
+            $0.countsTowardDuration && $0.phase == FocusPhase.focus.rawValue
+        }
+    }
+    // 修复（2026-10-15 审查 P2-S2）：删除死代码 setAchievementService——
+    // FocusServiceProtocol 无此方法、全仓无调用点
 }
 
 // MARK: - MockAchievementService
@@ -219,6 +287,12 @@ final class MockNotificationService: NotificationServiceProtocol {
 
     func cancelNotification(withIdentifier identifier: String) {
         cancelledIdentifiers.append(identifier)
+    }
+
+    /// 修复（2026-10-15 通知乱弹）：记录全量清理调用，供回归断言
+    var cancelAllSessionNotificationsCallCount: Int = 0
+    func cancelAllSessionNotifications() {
+        cancelAllSessionNotificationsCallCount += 1
     }
 }
 
@@ -314,7 +388,10 @@ final class MockScheduleService: ScheduleServiceProtocol {
             createdEvents.append(last)
             return last
         }
-        return events.first!
+        guard let first = events.first else {
+            fatalError("MockScheduleService 未配置 events 且无 createEventHandler —— 请在测试中先注入事件")
+        }
+        return first
     }
 
     func updateEvent(_ event: ScheduleItem, title: String?, startDate: Date?, endDate: Date?, isAllDay: Bool?, location: String?, notes: String?, colorHex: String?, category: ScheduleCategory?, repeatRule: RepeatRule?, reminderEnabled: Bool?, reminderLeadMinutes: Int?) {
@@ -374,7 +451,10 @@ final class MockHabitService: HabitServiceProtocol {
 
     func createHabit(name: String, descriptionText: String?, iconName: String?, colorHex: String?, frequency: String, targetCount: Int16) -> Habit {
         createHabitCalledHandler?()
-        return habits.first!
+        guard let first = habits.first else {
+            fatalError("MockHabitService 未配置 habits 且无 createHabitHandler —— 请在测试中先注入习惯")
+        }
+        return first
     }
 
     func updateHabit(_ habit: Habit, name: String?, descriptionText: String?, iconName: String?, colorHex: String?, frequency: String?, targetCount: Int16?) {
@@ -403,7 +483,7 @@ final class MockHabitService: HabitServiceProtocol {
             return defaultRecord
         }
         let placeholder = HabitRecord(context: habit.managedObjectContext ?? PersistenceController.shared.viewContext)
-        placeholder.id = UUID()
+        placeholder.storageId = UUID()
         placeholder.habit = habit
         placeholder.date = Date()
         placeholder.count = count
@@ -451,15 +531,41 @@ final class MockTimeRecordService: TimeRecordServiceProtocol {
 
     func startRecording(task: Task?, note: String?, project: String?, tag: Tag?) -> TimeRecord {
         startRecordingCalledHandler?()
-        currentRecord = records.first
-        return records.first!
+        guard let first = records.first else {
+            fatalError("MockTimeRecordService 未配置 records —— 请在测试中先注入记录")
+        }
+        currentRecord = first
+        return first
     }
 
     func stopRecording(_ record: TimeRecord) {
         stopRecordingCalledHandler?()
-        record.endTime = Date()
-        record.duration = record.endTime!.timeIntervalSince(record.startTime)
+        let end = Date()
+        if let pauseStart = record.pauseStartDate {
+            record.pausedDuration += max(0, end.timeIntervalSince(pauseStart))
+            record.pauseStartDate = nil
+        }
+        record.endTime = end
+        record.duration = max(0, end.timeIntervalSince(record.startTime) - record.pausedDuration)
         currentRecord = nil
+    }
+
+    func pauseRecording(_ record: TimeRecord) {
+        guard record.endTime == nil, record.pauseStartDate == nil else { return }
+        record.pauseStartDate = Date()
+    }
+
+    func resumeRecording(_ record: TimeRecord) {
+        guard record.endTime == nil, let pauseStart = record.pauseStartDate else { return }
+        record.pausedDuration += max(0, Date().timeIntervalSince(pauseStart))
+        record.pauseStartDate = nil
+    }
+
+    func netElapsedSeconds(for record: TimeRecord) -> TimeInterval {
+        if record.endTime != nil { return max(0, record.duration) }
+        let wall = max(0, Date().timeIntervalSince(record.startTime))
+        let currentPause = record.pauseStartDate.map { max(0, Date().timeIntervalSince($0)) } ?? 0
+        return max(0, wall - record.pausedDuration - currentPause)
     }
 
     func updateRecord(_ record: TimeRecord, note: String?, project: String?, isBillable: Bool?, tag: Tag?) {
@@ -501,12 +607,77 @@ final class MockSettingsSyncService: SyncServiceProtocol {
     var isCloudAvailable: Bool = false
     var setupCloudKitCalled = false
     var forceSyncCalled = false
+    /// 测试可配置：模拟手动同步返回的真实结果（用户反馈 2026-11-17）
+    var forceSyncResult: SyncOutcome = .noLocalChanges
 
     func setupCloudKit() {
         setupCloudKitCalled = true
     }
 
-    func forceSync() {
+    @discardableResult
+    func forceSync() -> SyncOutcome {
         forceSyncCalled = true
+        return forceSyncResult
+    }
+}
+
+// MARK: - MockReminderService
+// 修复（2026-10-15 审查 P1-022）：ReminderServiceProtocol 是 12 个服务协议中
+// 唯一没有 Mock 的一个，此前只能依赖真实 UNUserNotificationCenter 冒烟测试
+
+final class MockReminderService: ReminderServiceProtocol {
+    var rescheduleAllCalledCount = 0
+
+    func rescheduleAll() {
+        rescheduleAllCalledCount += 1
+    }
+}
+
+// MARK: - MockTagService（2026-11-19 标签功能回归测试）
+
+final class MockTagService: TagServiceProtocol {
+    var tags: [Tag] = []
+    /// 记录最后一次全量替换的 (tags, task)，供断言
+    var lastSetTags: (Set<Tag>, Task)?
+    var createTagCalledHandler: ((String, String?) -> Void)?
+
+    func fetchAllTags() -> [Tag] {
+        tags
+    }
+
+    func createTag(name: String, colorHex: String?) -> Tag? {
+        createTagCalledHandler?(name, colorHex)
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        // 与真实实现一致：同名去重
+        if let existing = tags.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            return existing
+        }
+        let tag = Tag(context: tags.first?.managedObjectContext ?? PersistenceController(inMemory: true).viewContext)
+        tag.storageId = UUID()
+        tag.name = trimmed
+        tag.colorHex = colorHex
+        tag.createdAt = Date()
+        tags.append(tag)
+        return tag
+    }
+
+    func renameTag(_ tag: Tag, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        tag.name = trimmed
+    }
+
+    func setTagColor(_ tag: Tag, colorHex: String?) {
+        tag.colorHex = colorHex
+    }
+
+    func deleteTag(_ tag: Tag) {
+        tags.removeAll { $0.id == tag.id }
+    }
+
+    func setTags(_ tags: Set<Tag>, on task: Task) {
+        task.tags = tags
+        lastSetTags = (tags, task)
     }
 }

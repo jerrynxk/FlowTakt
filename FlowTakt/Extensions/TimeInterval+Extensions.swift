@@ -6,6 +6,9 @@ extension TimeInterval {
     /// 格式化为中文 "X小时X分钟" 或英文 "Xh Xm"
     /// 审查修复（2026-08-12）：<60 秒不再显示"0分钟"，按 1 分钟兜底
     var formattedDuration: String {
+        // 修复（2026-10-14 P2）：Int(Double.nan) / Int(±infinity) 会 trap。
+        // 导入的脏数据或除零结果可能产生非有限值，必须先拦（判据复用 Numeric.isFiniteValue）。
+        guard isFiniteValue else { return "00:00" }
         let totalMinutes = Int(self) / 60
 
         // 非零但不足 1 分钟的时长显示为 1 分钟

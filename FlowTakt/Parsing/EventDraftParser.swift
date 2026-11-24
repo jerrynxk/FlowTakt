@@ -101,6 +101,13 @@ enum EventDraftParser {
             return today
         }
 
+        // 修复（2026-10-14 P2）：月日非法值（如「13月40日」）此前会继续 fall through 到
+        // 「仅日」分支，用月份数字当日号 → 得到一个「看起来合法但完全错误」的日期。
+        // 匹配到月日格式即必须返回，非法则回退今天。
+        if token.range(of: "^\\d{1,2}月\\d{1,2}日?$", options: .regularExpression) != nil {
+            return today
+        }
+
         // 3) 周几（严格限定整词形式：下周一 / 本周X / 周X / 单字X，避免数字串误判）
         let weekdayWordPattern = "^(下个?|本周)?周?[一二三四五六日天]$"
         let weekdayMatch = token.range(of: weekdayWordPattern, options: .regularExpression)
@@ -120,7 +127,7 @@ enum EventDraftParser {
 
     /// 从文本提取时间词并移除；返回 hour/minute（无时间词返回 nil）
     private static func extractTime(from text: inout String, baseDate: Date, calendar: Calendar) -> (hour: Int, minute: Int)? {
-        // 优先 HH:mm（clockPattern 的 \s* 可能让 token 带前导空格，解析时需 trim）
+        // 优先 HH:mm（token 由正则自带可选时段前缀与空格）
         let clockPattern = "(上午|下午|晚上|早上|中午)?\\s*([0-9]{1,2})[:：]([0-9]{2})"
         if let range = text.range(of: clockPattern, options: .regularExpression) {
             let token = String(text[range])
@@ -138,19 +145,17 @@ enum EventDraftParser {
     }
 
     private static func parseClockToken(_ token: String) -> (hour: Int, minute: Int)? {
-        var hour = 0
-        var minute = 0
-        var period: String? = nil
-        // 前导空格会使 Int(" 20") 解析失败 → 先 trim 再拆
-        let parts = token
-            .trimmingCharacters(in: .whitespaces)
-            .split(whereSeparator: { $0 == ":" || $0 == "：" })
-        if parts.count >= 2, let h = Int(parts[parts.count - 2]), let m = Int(parts[parts.count - 1]) {
-            hour = h
-            minute = m
-            period = detectPeriod(token)
-        }
-        return normalized(hour: hour, minute: minute, period: period)
+        // 修复（2026-10-14 审查 P1-12）：旧实现按 ":" 拆分后 `Int("下午3")` 失败，
+        // 于是 hour/minute 保持初值 0 并「成功」返回 (0, 0) —— 「下午3:30 开会」被静默
+        // 建到今天 00:00，而同义的「下午3点半」却解析正确，极难察觉。
+        // 现改为与 `parsePointToken` 同一策略：先抽取数字（时、分），再单独识别时段词。
+        // 注意：分隔判据是「非数字即分隔符」—— 冒号本身也是分隔符，
+        // 若把冒号排除在分隔之外，"20:00" 会作为整块不拆分、Int("20:00") 恒为 nil。
+        let numbers = token
+            .split(whereSeparator: { !$0.isNumber })
+            .compactMap { Int($0) }
+        guard numbers.count >= 2 else { return nil }
+        return normalized(hour: numbers[0], minute: numbers[1], period: detectPeriod(token))
     }
 
     private static func parsePointToken(_ token: String) -> (hour: Int, minute: Int)? {
@@ -163,7 +168,7 @@ enum EventDraftParser {
         return normalized(hour: hour, minute: minute, period: period)
     }
 
-    /// 上午/早上 → 原样；下午/晚上/中午 → +12（晚上 12 点 = 0 点次日，简化 +12）
+    /// 上午/早上 → 原样；下午/晚上/中午 → +12（12 点不调整，即「晚上12点」按 12:00 处理）
     private static func normalized(hour: Int, minute: Int, period: String?) -> (hour: Int, minute: Int) {
         var h = hour
         if let period {
@@ -176,8 +181,11 @@ enum EventDraftParser {
                 break
             }
         }
-        // 无时段且 ≤7 点：默认视为当天该时刻（保持原样）
-        return (h, minute)
+        // 修复（2026-10-14 P2）：范围钳制 —— 正则允许小时 0-99 / 分钟 00-99，
+        // 越界值会让 `date(bySettingHour:)` 兜底回落到当天 00:00（静默错误数据）。
+        h = min(max(h, 0), 23)
+        let m = min(max(minute, 0), 59)
+        return (h, m)
     }
 
     private static func detectPeriod(_ token: String) -> String? {

@@ -71,6 +71,19 @@ struct CreateHabitSheetView: View {
             case .teal:   return "5AC8FA"
             }
         }
+
+        /// 无障碍（2026-10-14）：读屏名本地化（此前直接播报 rawValue 英文 "red"/"teal"）
+        var displayName: String {
+            switch self {
+            case .red:    return L10n.shared.红色
+            case .blue:   return L10n.shared.蓝色
+            case .green:  return L10n.shared.绿色
+            case .orange: return L10n.shared.橙色
+            case .purple: return L10n.shared.紫色
+            case .pink:   return L10n.shared.粉色
+            case .teal:   return L10n.shared.青色
+            }
+        }
     }
 
     var body: some View {
@@ -127,7 +140,7 @@ struct CreateHabitSheetView: View {
                                 }
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel(option.rawValue)
+                            .accessibilityLabel(option.displayName)
                             .accessibilityAddTraits(selectedColor == option ? .isSelected : [])
                         }
                     }
@@ -154,6 +167,8 @@ struct CreateHabitSheetView: View {
             }
             .navigationTitle(L10n.shared.新建习惯)
             .navigationBarTitleDisplayMode(.inline)
+            // 滚动统一调整（2026-11-02）：禁用弹性 + 柔化撞停减速
+            .disableBounce()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L10n.shared.取消) {

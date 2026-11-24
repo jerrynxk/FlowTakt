@@ -48,7 +48,7 @@ final class ScheduleViewModelTests: XCTestCase {
     func testCreateEvent_GivenValidInput_ThenCallsServiceAndRefreshes() {
         // Given: 预先在 Mock 中放一个事件
         let event = ScheduleItem(context: persistence.viewContext)
-        event.id = UUID()
+        event.storageId = UUID()
         event.title = "测试事件"
         event.startDate = Date()
         event.category = ScheduleCategory.event.rawValue
@@ -108,7 +108,7 @@ final class ScheduleViewModelTests: XCTestCase {
 
     func testCreateEvent_PostsRemindersChangedNotification() {
         let event = ScheduleItem(context: persistence.viewContext)
-        event.id = UUID()
+        event.storageId = UUID()
         event.title = "提醒事件"
         event.startDate = Date()
         event.category = ScheduleCategory.event.rawValue
@@ -146,7 +146,7 @@ final class ScheduleViewModelTests: XCTestCase {
 
     func testUpdateEvent_GivenPartialFields_ThenCallsService() {
         let event = ScheduleItem(context: persistence.viewContext)
-        event.id = UUID()
+        event.storageId = UUID()
         event.title = "原始标题"
         event.startDate = Date()
         event.category = ScheduleCategory.event.rawValue
@@ -185,7 +185,7 @@ final class ScheduleViewModelTests: XCTestCase {
 
     func testDeleteEvent_ThenCallsService() {
         let event = ScheduleItem(context: persistence.viewContext)
-        event.id = UUID()
+        event.storageId = UUID()
         event.title = "待删除"
         event.startDate = Date()
         event.category = ScheduleCategory.event.rawValue
@@ -205,7 +205,7 @@ final class ScheduleViewModelTests: XCTestCase {
 
     func testDeleteEvent_PostsRemindersChangedNotification() {
         let event = ScheduleItem(context: persistence.viewContext)
-        event.id = UUID()
+        event.storageId = UUID()
         event.title = "待删除提醒"
         event.startDate = Date()
         event.category = ScheduleCategory.event.rawValue
@@ -228,11 +228,38 @@ final class ScheduleViewModelTests: XCTestCase {
     // ========================================================================
 
     func testRefreshForDate_ThenUpdatesSelectedDateAndEvents() {
+        // 语义更新（2026-10-15 Round 4）：Round 3 P1 修复后 `events` 恒为「当前月」数据源
+        // （当日列表由视图按 selectedDate 派生，修复点日期后整月圆点消失）。
+        // 跨月选择时应把数据源切到目标月；同月选择不覆写月数据源。
+        let calendar = Calendar.current
+        let nextMonthDate = calendar.date(byAdding: .month, value: 1, to: Date())!
+        let nextMonthEvent = ScheduleItem(context: persistence.viewContext)
+        nextMonthEvent.storageId = UUID()
+        nextMonthEvent.title = "下月事件"
+        nextMonthEvent.startDate = nextMonthDate
+        nextMonthEvent.category = ScheduleCategory.event.rawValue
+        nextMonthEvent.repeatRule = RepeatRule.none.rawValue
+        nextMonthEvent.reminderEnabled = false
+        nextMonthEvent.reminderLeadMinutes = 0
+        nextMonthEvent.createdAt = Date()
+        nextMonthEvent.updatedAt = Date()
+        try? persistence.viewContext.save()
+        mockScheduleService.events = [nextMonthEvent]
+
+        // When: 选到下个月（跨月）→ 数据源切到该月
+        viewModel.refreshForDate(nextMonthDate)
+
+        // Then
+        XCTAssertEqual(viewModel.selectedDate.timeIntervalSince1970, nextMonthDate.timeIntervalSince1970, accuracy: 1.0)
+        XCTAssertEqual(viewModel.events.count, 1)
+    }
+
+    func testRefreshForDate_SameMonth_DoesNotOverwriteMonthDataSource() {
+        // 同月选择不触发月数据源刷新（Round 3 P1 修复语义的守卫用例）
         let event = ScheduleItem(context: persistence.viewContext)
-        event.id = UUID()
-        event.title = "特定日期事件"
-        let targetDate = Date()
-        event.startDate = targetDate
+        event.storageId = UUID()
+        event.title = "本月事件"
+        event.startDate = Date()
         event.category = ScheduleCategory.event.rawValue
         event.repeatRule = RepeatRule.none.rawValue
         event.reminderEnabled = false
@@ -242,17 +269,19 @@ final class ScheduleViewModelTests: XCTestCase {
         try? persistence.viewContext.save()
         mockScheduleService.events = [event]
 
-        // When
+        let targetDate = Date()
         viewModel.refreshForDate(targetDate)
 
-        // Then
         XCTAssertEqual(viewModel.selectedDate.timeIntervalSince1970, targetDate.timeIntervalSince1970, accuracy: 1.0)
-        XCTAssertEqual(viewModel.events.count, 1)
+        // 数据源保持「VM 创建时（mock 尚为空）的当月拉取结果」→ 0 条；
+        // 关键断言：同月选择不会把 events 覆写成「仅当日」的数据（旧实现会变成 1 条）
+        XCTAssertEqual(viewModel.events.count, 0,
+                       "同月选择不得覆写月数据源（Round 3 P1 修复语义守卫）")
     }
 
     func testRefreshAllEvents_ThenReturnsAllFromService() {
         let e1 = ScheduleItem(context: persistence.viewContext)
-        e1.id = UUID()
+        e1.storageId = UUID()
         e1.title = "事件1"
         e1.startDate = Date()
         e1.category = ScheduleCategory.event.rawValue
@@ -263,7 +292,7 @@ final class ScheduleViewModelTests: XCTestCase {
         e1.updatedAt = Date()
 
         let e2 = ScheduleItem(context: persistence.viewContext)
-        e2.id = UUID()
+        e2.storageId = UUID()
         e2.title = "事件2"
         e2.startDate = Date()
         e2.category = ScheduleCategory.birthday.rawValue
@@ -288,7 +317,7 @@ final class ScheduleViewModelTests: XCTestCase {
 
     func testDatabaseWillReset_ClearsEvents() {
         let event = ScheduleItem(context: persistence.viewContext)
-        event.id = UUID()
+        event.storageId = UUID()
         event.title = "清空"
         event.startDate = Date()
         event.category = ScheduleCategory.event.rawValue
@@ -316,7 +345,7 @@ final class ScheduleViewModelTests: XCTestCase {
     func testFindEvent_ByID_ThenReturnsEventFromService() {
         // Given - 模拟下月事件（不在当前加载的 events 中）
         let event = ScheduleItem(context: persistence.viewContext)
-        event.id = UUID()
+        event.storageId = UUID()
         event.title = "下月生日"
         event.startDate = Calendar.current.date(byAdding: .month, value: 1, to: Date())!
         event.category = ScheduleCategory.birthday.rawValue
@@ -364,7 +393,7 @@ final class ScheduleViewModelTests: XCTestCase {
         let weekStart = calendar.date(byAdding: .day, value: -diffToWeekStart, to: dayStart)!
         let thursday = calendar.date(byAdding: .day, value: 3, to: weekStart)!
         let inWeek = ScheduleItem(context: persistence.viewContext)
-        inWeek.id = UUID()
+        inWeek.storageId = UUID()
         inWeek.title = "周内事件"
         inWeek.startDate = calendar.date(byAdding: .day, value: 1, to: thursday)!
         inWeek.category = ScheduleCategory.event.rawValue
@@ -375,7 +404,7 @@ final class ScheduleViewModelTests: XCTestCase {
         inWeek.updatedAt = Date()
 
         let outOfWeek = ScheduleItem(context: persistence.viewContext)
-        outOfWeek.id = UUID()
+        outOfWeek.storageId = UUID()
         outOfWeek.title = "周外事件"
         outOfWeek.startDate = calendar.date(byAdding: .day, value: 14, to: thursday)!
         outOfWeek.category = ScheduleCategory.event.rawValue

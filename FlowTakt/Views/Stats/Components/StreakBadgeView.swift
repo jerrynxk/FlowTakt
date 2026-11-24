@@ -74,6 +74,8 @@ struct StreakBadgeView_Previews: PreviewProvider {
             ))
             .padding()
             .background(Color.appBackground)
-    }
+            .environmentObject(L10n.shared)
+    
+}
 }
 #endif

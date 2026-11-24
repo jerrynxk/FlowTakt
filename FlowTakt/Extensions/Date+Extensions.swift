@@ -12,6 +12,7 @@ extension Date {
     private static let shortDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "MM/dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
         return f
     }()
 
@@ -19,6 +20,7 @@ extension Date {
     private static let fullDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy/MM/dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
         return f
     }()
 
@@ -46,6 +48,15 @@ extension Date {
             return startOfDay
         }
         return date
+    }
+
+    /// 获取当年的起始时间（标签统计「年」档，2026-11-22 用户反馈）
+    var startOfYear: Date {
+        let calendar = Calendar.current
+        let year = calendar.component(.year, from: self)
+        // 显式写明月/日，避免 dateComponents([.year]) 在异常日历下回退成「今天 00:00」
+        let components = DateComponents(year: year, month: 1, day: 1)
+        return calendar.date(from: components) ?? startOfDay
     }
 
     /// 格式化为简短日期字符串

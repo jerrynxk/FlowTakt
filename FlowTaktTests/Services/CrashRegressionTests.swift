@@ -48,7 +48,7 @@ final class CrashRegressionTests: XCTestCase {
     /// 这是 2026-10-02 线上崩溃的直接触发条件。
     private func makeOrphanHabitRecord(id: UUID = UUID(), date: Date = Date()) -> HabitRecord {
         let record = HabitRecord(context: persistence.viewContext)
-        record.id = id
+        record.storageId = id
         record.date = date
         record.count = 1
         record.note = nil
@@ -91,7 +91,7 @@ final class CrashRegressionTests: XCTestCase {
 
     /// P0-2：JSON 备份导出遇到孤儿记录不崩溃，且孤儿记录被安全过滤。
     /// 原实现 `record.habit.id` 在 habit 为 nil 时触发 EXC_BAD_ACCESS。
-    func testJSONBackupExport_WithOrphanHabitRecord_DoesNotCrash() throws {
+    func testJSONBackupExport_WithOrphanHabitRecord_DoesNotCrash() async throws {
         // Given
         let habit = habitService.createHabit(name: "早起", descriptionText: nil,
                                              iconName: "sunrise", colorHex: "#FF9500",
@@ -101,7 +101,8 @@ final class CrashRegressionTests: XCTestCase {
         persistence.save()
 
         // When
-        let url = try XCTUnwrap(backupService.exportJSON())
+        let urlExported = await backupService.exportJSONAsync()
+        let url = try XCTUnwrap(urlExported)
 
         // Then：导出成功，且孤儿记录未出现在 JSON 中
         let data = try Data(contentsOf: url)
@@ -158,10 +159,15 @@ final class CrashRegressionTests: XCTestCase {
         habitService.deleteHabit(habit)
 
         // Then：全部打卡记录从 store 消失，不留孤儿
+        // 修复（2026-10-14 审查 T2）：原断言只检查「记录不再指向 habitID」，
+        // 而 `habit == nil` 的孤儿记录同样满足该条件 —— 断言恒真、无法发现回归。
+        // 改为断言 HabitRecord 总数为 0（真正验证「从 store 消失」）。
+        let totalAfter = (try? persistence.viewContext.count(for: HabitRecord.fetchRequest())) ?? -1
+        XCTAssertEqual(totalAfter, 0, "打卡记录应随习惯从 store 中彻底消失（不能残留为孤儿）")
         let after = habitService.fetchRecords(from: Date().addingTimeInterval(-86400 * 30),
                                               to: Date().addingTimeInterval(86400))
         XCTAssertTrue(after.allSatisfy { $0.habit?.id != habitID },
-                      "打卡记录应随习惯删除（否则 CloudKit 同步后会残留为孤儿）")
+                      "不应残留指向该习惯的打卡记录（CloudKit 同步后不应出现孤儿）")
     }
 
     /// P0-3 补充：删除习惯后，其打卡记录在数据库层面确实消失。
@@ -176,10 +182,13 @@ final class CrashRegressionTests: XCTestCase {
         let habitID = habit.id
         habitService.deleteHabit(habit)
 
+        // 修复（2026-10-14 审查 T2）：同T1，改为总数断言
+        let totalAfter = (try? persistence.viewContext.count(for: HabitRecord.fetchRequest())) ?? -1
+        XCTAssertEqual(totalAfter, 0, "数据库中不应残留该习惯的任何打卡记录")
         let all = habitService.fetchRecords(from: Date().addingTimeInterval(-86400),
                                             to: Date().addingTimeInterval(86400))
         XCTAssertFalse(all.contains { $0.habit?.id == habitID },
-                       "数据库中不应残留该习惯的打卡记录")
+                       "不应残留指向该习惯的打卡记录")
     }
 
     /// removeCheckIn 遇到 habit 为 nil 的孤儿记录不崩溃（跳过 streak 重算）。
@@ -203,12 +212,11 @@ final class CrashRegressionTests: XCTestCase {
     // MARK: - P0-4：TimeRecordView 多选删除数组越界
     // ========================================================================
 
-    /// P0-4 核心：多选删除时，后续索引对应的记录已消失，不得越界。
-    /// 原实现每次循环重新求值计算属性 `recordsForDate`，第二次迭代索引越界。
+    /// P0-4 核心：多选删除时数据源会收缩，不得越界。
     ///
-    /// 注意期望值：3 条记录删除 index {0, 2} 时，删掉 index 0 后数组剩 2 条，
-    /// index 2 越界 → 修复后的守卫会**跳过**它，故最终只删除 1 条。
-    /// 「不崩溃」才是本测试的验证目标，删除条数退化为次要观测。
+    /// 修复（2026-10-14 审查 T1）：原用例**自己复刻了一遍删除循环**（守卫写在测试里），
+    /// 从未调用生产代码 —— 把 `TimeRecordView.deleteRecords` 的守卫整段删掉，用例依然全绿，
+    /// 属于典型「假绿」。现把守卫下沉到 `TimeRecordViewModel.deleteRecords(at:in:)` 并直接调用。
     func testMultiSelectDelete_WithShrinkingSource_DoesNotCrashWithIndexOutOfRange() {
         // Given：3 条当日记录（间隔创建，确保 startTime 互不相同）
         for i in 0..<3 {
@@ -218,43 +226,39 @@ final class CrashRegressionTests: XCTestCase {
         }
         persistence.save()
 
-        let before = timeRecordService.fetchAllRecords()
+        let viewModel = TimeRecordViewModel(timeRecordService: timeRecordService,
+                                            persistenceController: persistence)
+        viewModel.loadRecords()
+        let displayed = viewModel.records
             .filter { Calendar.current.isDateInToday($0.startTime) }
-        XCTAssertGreaterThanOrEqual(before.count, 3, "应有至少 3 条当日记录可供多选")
+            .sorted { $0.startTime > $1.startTime }
+        XCTAssertGreaterThanOrEqual(displayed.count, 3, "应有至少 3 条当日记录可供多选")
 
-        // When：模拟多选删除 {0, 2} —— 复刻原崩溃算例
-        // 原实现：第 1 次删 index 0 → 数组缩短 → 第 2 次 index 2 越界 → Fatal error
-        let indexSet: IndexSet = [0, 2]
-        var snapshot = before.sorted { $0.startTime > $1.startTime }
-        for index in indexSet where index < snapshot.count {
-            timeRecordService.deleteRecord(snapshot[index])
-            persistence.save()
-            // 关键：删除后重新计算集合，模拟 `recordsForDate` 计算属性的重新求值
-            snapshot = timeRecordService.fetchAllRecords()
-                .filter { Calendar.current.isDateInToday($0.startTime) }
-                .sorted { $0.startTime > $1.startTime }
-        }
+        // When：走**生产实现**删除 index {0, 2}（每次 deleteRecord 都会重载 records，
+        // 与线上崩溃场景一致：源数据在循环中收缩）
+        viewModel.deleteRecords(at: IndexSet([0, 2]), in: displayed)
 
-        // Then：能执行到这里即未崩溃；且确有记录被删除
+        // Then：未崩溃，且选中的 2 条都被删除（按快照删除，不因收缩漏删）
         let after = timeRecordService.fetchAllRecords()
             .filter { Calendar.current.isDateInToday($0.startTime) }
-        XCTAssertLessThan(after.count, before.count,
-                          "越界索引应被安全跳过，已删除的记录不应恢复")
+        XCTAssertEqual(after.count, displayed.count - 2, "选中的 2 条都应被删除")
     }
 
-    /// P0-4 补充：越界索引（防御性 `where index < count`）被安全跳过。
+    /// P0-4 补充：越界索引被安全跳过（防御性守卫）。
     func testMultiSelectDelete_WithOutOfRangeIndex_IsSkippedSafely() {
         let r = timeRecordService.startRecording(task: nil, note: "唯一记录",
                                                  project: nil, tag: nil)
         timeRecordService.stopRecording(r)
         persistence.save()
 
+        let viewModel = TimeRecordViewModel(timeRecordService: timeRecordService,
+                                            persistenceController: persistence)
+        viewModel.loadRecords()
+        let displayed = viewModel.records
+            .filter { Calendar.current.isDateInToday($0.startTime) }
+            .sorted { $0.startTime > $1.startTime }
         // 模拟数据源已变化导致索引失效
-        let snapshot = timeRecordService.fetchAllRecords()
-        let staleIndexSet: IndexSet = [5]
-        for index in staleIndexSet where index < snapshot.count {
-            timeRecordService.deleteRecord(snapshot[index])
-        }
+        viewModel.deleteRecords(at: IndexSet([5]), in: displayed)
 
         XCTAssertEqual(timeRecordService.fetchAllRecords().count, 1,
                        "越界索引应被跳过，记录保留")
@@ -342,8 +346,8 @@ final class CrashRegressionTests: XCTestCase {
         var completed: Bool?
 
         // When
-        filePersistence.resetDatabase { success in
-            completed = success
+        filePersistence.resetDatabase { result in
+            completed = (try? result.get()) != nil
         }
 
         // Then
@@ -378,18 +382,19 @@ final class CrashRegressionTests: XCTestCase {
                          "重置后应可继续写入")
     }
 
-    /// P1-3 补充：内存 store 下 resetDatabase 应安全返回 false（无 store URL），
+    /// P1-3 补充：内存 store 下 resetDatabase 应安全返回失败（无持久化文件可重置），
     /// 而非崩溃或挂起 —— 验证 guard 提前返回路径。
     func testResetDatabase_WithInMemoryStore_ReturnsFalseSafely() {
         let exp = expectation(description: "resetDatabase 回调")
         var result: Bool?
-        persistence.resetDatabase { success in
-            result = success
+        // 2026-10-14：completion 改为 Result（需区分云端清除失败与本地销毁失败）
+        persistence.resetDatabase { outcome in
+            if case .failure = outcome { result = false }
             exp.fulfill()
         }
         wait(for: [exp], timeout: 10.0)
         XCTAssertEqual(result, false,
-                       "内存 store 无 URL 时应安全返回 false，不应崩溃或挂起")
+                       "内存 store 无持久化文件时应安全返回失败，不应崩溃或挂起")
     }
 
     // ========================================================================
@@ -397,7 +402,7 @@ final class CrashRegressionTests: XCTestCase {
     // ========================================================================
 
     /// P1-4：合法备份可正常恢复（校验不应误伤正常数据）。
-    func testImportJSON_WithValidBackup_Succeeds() throws {
+    func testImportJSON_WithValidBackup_Succeeds() async throws {
         // Given：先导出一份合法备份
         let habit = habitService.createHabit(name: "备份习惯", descriptionText: "描述",
                                              iconName: "icloud", colorHex: "#007AFF",
@@ -405,7 +410,8 @@ final class CrashRegressionTests: XCTestCase {
         _ = habitService.checkIn(habit: habit, count: 1, note: "打卡")
         let r = timeRecordService.startRecording(task: nil, note: "计时", project: nil, tag: nil)
         timeRecordService.stopRecording(r)
-        let exportURL = try XCTUnwrap(backupService.exportJSON())
+        let exportURLExported = await backupService.exportJSONAsync()
+        let exportURL = try XCTUnwrap(exportURLExported)
         // 确认导出文件可读且为合法 JSON（作为后续恢复的数据源）
         let backupData = try Data(contentsOf: exportURL)
         XCTAssertFalse(backupData.isEmpty, "导出的备份文件不应为空")
@@ -532,7 +538,7 @@ final class CrashRegressionTests: XCTestCase {
 
     /// 组合回归：孤儿记录 + 正常记录共存时，导出与打卡链路全部正常。
     /// 覆盖线上最可能的实际数据形态（用户删过习惯但没删干净打卡记录）。
-    func testMixedOrphanAndValidRecords_AllOperationsSucceed() throws {
+    func testMixedOrphanAndValidRecords_AllOperationsSucceed() async throws {
         // Given：两个习惯，其中一个被"另一设备删除"（留下孤儿记录）
         let keepHabit = habitService.createHabit(name: "保留习惯", descriptionText: nil,
                                                  iconName: "heart", colorHex: "#FF2D55",
@@ -556,7 +562,8 @@ final class CrashRegressionTests: XCTestCase {
         XCTAssertNoThrow(persistence.save(), "保存孤儿记录不崩溃")
         XCTAssertNotNil(DataExportService.exportHabitRecordsForTesting(in: persistence.viewContext),
                         "CSV 导出含孤儿记录时不崩溃")
-        let jsonURL = try XCTUnwrap(backupService.exportJSON(), "JSON 导出含孤儿记录时不崩溃")
+        let jsonURLExported = await backupService.exportJSONAsync()
+        let jsonURL = try XCTUnwrap(jsonURLExported, "JSON 导出含孤儿记录时不崩溃")
         let json = try String(contentsOf: jsonURL, encoding: .utf8)
         XCTAssertFalse(json.contains(orphanID.uuidString), "孤儿记录被过滤")
         XCTAssertTrue(json.contains("保留习惯"), "有效记录正常导出")

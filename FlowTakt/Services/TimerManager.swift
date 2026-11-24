@@ -29,6 +29,22 @@ final class TimerManager: ObservableObject {
     /// 避免「发布 .finished 后的延迟 stop」误停掉窗口内新启动的计时器
     private var generation = 0
 
+    // MARK: - 测试时钟注入（修复 2026-10-14 审查 T5）
+    //
+    // 此前 `syncFromBackground` 的两条用例用「1 秒时长 + 等 1.5 秒」制造超时，
+    // 但 0.1s 的前台 Timer 会**先于** syncFromBackground 自行判定超时并发布 .finished，
+    // 于是删掉 syncFromBackground 的整个超时分支，用例依然全绿（假绿）。
+    // 注入可控时钟后：startDate 由测试指定，`updateTimer` 走注入的「现在」，
+    // 前台 Timer 不再参与判定，超时路径可被确定性地验证。
+    /// 时钟源：生产返回 Date()，测试可替换为固定值
+    var nowProvider: () -> Date = { Date() }
+
+    /// 手动推进一次计时计算（测试用；不依赖 RunLoop 真实时间）
+    func tickForTesting() { updateTimer() }
+
+    /// 测试用：直接设置计时起点（等价于「已经过去了 N 秒」）
+    func setStartDateForTesting(_ date: Date) { startDate = date }
+
     /// 开始计时
     func start(duration: TimeInterval) {
         guard duration > 0 else { return }
@@ -37,7 +53,7 @@ final class TimerManager: ObservableObject {
         totalDuration = duration
         timeRemaining = duration
         timerState = .running
-        startDate = Date()
+        startDate = nowProvider()
         scheduleTimer()
     }
 
@@ -47,7 +63,7 @@ final class TimerManager: ObservableObject {
         timer?.invalidate()
         timer = nil
         pausedTimeRemaining = timeRemaining
-        pauseDate = Date()
+        pauseDate = nowProvider()
         timerState = .paused
     }
 
@@ -55,12 +71,13 @@ final class TimerManager: ObservableObject {
     func resume() {
         guard timerState == .paused else { return }
         if let pauseDate = pauseDate {
-            totalPausedDuration += Date().timeIntervalSince(pauseDate)
+            totalPausedDuration += nowProvider().timeIntervalSince(pauseDate)
         }
         pauseDate = nil
         timerState = .running
         let alreadyElapsed = totalDuration - pausedTimeRemaining
-        startDate = Date().addingTimeInterval(-alreadyElapsed)
+        // 修复（2026-10-15 审查 P1-013）：改用注入时钟，测试可确定性验证 resume 后的连续性
+        startDate = nowProvider().addingTimeInterval(-alreadyElapsed)
         scheduleTimer()
     }
 
@@ -68,7 +85,8 @@ final class TimerManager: ObservableObject {
     /// 审查修复（2026-08-12）：skipPhase 等路径需要在暂停态结算 actualDuration 时补扣。
     var currentPausedDuration: TimeInterval {
         guard let pauseDate else { return 0 }
-        return Date().timeIntervalSince(pauseDate)
+        // 修复（2026-10-15 审查 P1-013）：改用注入时钟（与 updateTimer 同源，消除测试假绿）
+        return nowProvider().timeIntervalSince(pauseDate)
     }
 
     /// 停止计时
@@ -92,7 +110,7 @@ final class TimerManager: ObservableObject {
     func syncFromBackground() {
         guard timerState == .running, let start = startDate, totalDuration > 0 else { return }
 
-        let elapsed = Date().timeIntervalSince(start)
+        let elapsed = nowProvider().timeIntervalSince(start)
         timeRemaining = max(0, totalDuration - elapsed)
         progress = min(1.0, elapsed / totalDuration)
 
@@ -113,7 +131,8 @@ final class TimerManager: ObservableObject {
     /// 当前已消耗时间
     var elapsedTime: TimeInterval {
         guard let startDate = startDate else { return 0 }
-        return Date().timeIntervalSince(startDate)
+        // 修复（2026-10-15 审查 P1-013）：改用注入时钟（与 updateTimer 同源，消除测试假绿）
+        return nowProvider().timeIntervalSince(startDate)
     }
 
     /// 剩余秒数（别名，用于测试兼容）
@@ -145,7 +164,7 @@ final class TimerManager: ObservableObject {
     private func updateTimer() {
         guard let startDate = startDate, totalDuration > 0 else { return }
 
-        let elapsed = Date().timeIntervalSince(startDate)
+        let elapsed = nowProvider().timeIntervalSince(startDate)
         timeRemaining = max(0, totalDuration - elapsed)
         progress = min(1.0, elapsed / totalDuration)
 

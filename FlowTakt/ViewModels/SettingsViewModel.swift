@@ -6,9 +6,23 @@ import SwiftUI
 
 // MARK: - SettingsViewModel
 
+/// 未注入重置回调时的失败原因
+enum ResetUnavailableError: LocalizedError {
+    case callbackMissing
+    var errorDescription: String? { L10n.shared.重置数据库失败提示 }
+}
+
 final class SettingsViewModel: ObservableObject {
     /// 数据库重置回调（由 AppDependency 注入）
-    var onResetDatabase: ((@escaping (Bool) -> Void) -> Void)?
+    var onResetDatabase: ((@escaping (Result<Void, Error>) -> Void) -> Void)?
+
+    /// iCloud 同步切换回调（由 AppDependency 注入，2026-10-15 审查 P0-1）。
+    /// 运行时重载 store 以真正挂载/卸载 CloudKit；失败时回滚开关并设置 `cloudSyncError`。
+    /// 未注入时（Preview/测试）退化为旧行为：仅写 UserDefaults，下次冷启动生效。
+    var onCloudSyncChanged: ((Bool, @escaping (Result<Void, Error>) -> Void) -> Void)?
+
+    /// iCloud 同步切换失败的具体原因（禁止笼统「切换失败」）
+    @Published var cloudSyncError: String?
 
     /// 同步服务（构造时注入，避免后续破坏不可变性）
     private let syncService: SyncServiceProtocol
@@ -66,6 +80,15 @@ final class SettingsViewModel: ObservableObject {
         set { objectWillChange.send(); autoStartBreaksStorage = newValue }
     }
 
+    /// 专注开始时是否自动播放白噪音（用户反馈 2026-11-19）。
+    /// 键收口到 `FocusViewModel.whiteNoiseAutoPlayKey`（单一来源，避免两处字面量漂移）：
+    /// 专注页手动关闭白噪音时会写 false，此后开始专注不再自动播放；在此重新打开则恢复。
+    @AppStorage(FocusViewModel.whiteNoiseAutoPlayKey) private var autoPlayWhiteNoiseStorage: Bool = true
+    var autoPlayWhiteNoise: Bool {
+        get { autoPlayWhiteNoiseStorage }
+        set { objectWillChange.send(); autoPlayWhiteNoiseStorage = newValue }
+    }
+
     @AppStorage("autoStartFocus") private var autoStartFocusStorage: Bool = false
     var autoStartFocus: Bool {
         get { autoStartFocusStorage }
@@ -95,13 +118,34 @@ final class SettingsViewModel: ObservableObject {
         set { objectWillChange.send(); colorSchemeOptionStorage = newValue }
     }
 
-    @AppStorage("iCloudSyncEnabled") private var iCloudSyncEnabledStorage: Bool = false
+    /// iCloud 同步开关。**默认开启**（用户反馈 2026-11-19：希望自动同步，而不是先手动打开）。
+    /// 判据与 `PersistenceController.isCloudSyncEnabledByUser` 共用同一键与同一默认值，
+    /// 避免「UI 显示关、实际在同步」或反之的假说明。
+    @AppStorage("iCloudSyncEnabled") private var iCloudSyncEnabledStorage: Bool = true
     var iCloudSyncEnabled: Bool {
         get { iCloudSyncEnabledStorage }
         set {
             objectWillChange.send()
             iCloudSyncEnabledStorage = newValue
-            if iCloudSyncEnabledStorage { syncService.forceSync() }
+            if let apply = onCloudSyncChanged {
+                // 修复（2026-10-15 审查 P0-1）：仅写 UserDefaults 时 CloudKit 不会挂载
+                // （init 只在启动时读一次）→ 开关形同虚设。改为运行时重载 store。
+                apply(newValue) { [weak self] result in
+                    guard let self else { return }
+                    switch result {
+                    case .success:
+                        self.cloudSyncError = nil
+                    case .failure(let error):
+                        // 失败回滚开关并如实回显原因（禁止笼统报错）
+                        self.objectWillChange.send()
+                        self.iCloudSyncEnabledStorage = !newValue
+                        self.cloudSyncError = error.localizedDescription
+                    }
+                }
+            } else if newValue {
+                // 回调未注入（Preview/测试环境）：UserDefaults 已写，下次冷启动生效
+                syncService.forceSync()
+            }
         }
     }
 
@@ -109,8 +153,13 @@ final class SettingsViewModel: ObservableObject {
     var dailyReminderEnabled: Bool {
         get { dailyReminderEnabledStorage }
         set {
+            // 修复（2026-10-15 通知乱弹）：SwiftUI 的 `Toggle(isOn: $viewModel.dailyReminderEnabled)`
+            // 会在视图重建时写回绑定值。旧实现无条件调度/取消，导致设置页每次重建都
+            // 重复 add 同一条「每日提醒」并重置其触发基准。仅在**值真正变化**时才动通知系统。
+            let changed = dailyReminderEnabledStorage != newValue
             objectWillChange.send()
             dailyReminderEnabledStorage = newValue
+            guard changed else { return }
             if newValue { scheduleDailyReminder() } else { cancelDailyReminder() }
         }
     }
@@ -135,8 +184,11 @@ final class SettingsViewModel: ObservableObject {
     var habitReminderEnabled: Bool {
         get { habitReminderEnabledStorage }
         set {
+            // 同 dailyReminderEnabled：仅在值真正变化时动通知系统（修复 2026-10-15 通知乱弹）
+            let changed = habitReminderEnabledStorage != newValue
             objectWillChange.send()
             habitReminderEnabledStorage = newValue
+            guard changed else { return }
             if newValue { scheduleHabitReminder() } else { cancelHabitReminder() }
         }
     }
@@ -239,12 +291,14 @@ final class SettingsViewModel: ObservableObject {
         soundEnabled = true
         vibrationEnabled = true
         speechEnabled = true
+        autoPlayWhiteNoise = true
         weeklyReportEnabled = true
         autoStartBreaks = true
         autoStartFocus = false
         dailyReminderEnabled = false
         habitReminderEnabled = false
-        iCloudSyncEnabled = false
+        // iCloud 同步默认开启（2026-11-19 用户反馈）：恢复默认即恢复「自动同步」
+        iCloudSyncEnabled = true
         appLanguage = "zh-Hans"
         colorSchemeOption = "system"
         reminderHourStorage = 9
@@ -260,14 +314,52 @@ final class SettingsViewModel: ObservableObject {
     }
 
     /// 重置数据库（清空所有数据）
-    /// 通过 onResetDatabase 回调触发 PersistenceController 执行实际重置（异步，避免主线程阻塞）
-    func resetDatabase(completion: @escaping (Bool) -> Void) {
-        onResetDatabase?(completion) ?? completion(false)
+    ///
+    /// 修复（2026-10-14）：改为返回 `Result`，让 UI 能区分「云端副本没删掉」
+    /// 与「本地销毁失败」——两者对用户是完全不同的处置动作，不能笼统报「重置失败」。
+    /// iCloud 开启时会先清除 CloudKit 镜像记录，云端清除失败即中止，本地数据保持原样。
+    func resetDatabase(completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let onResetDatabase else {
+            completion(.failure(ResetUnavailableError.callbackMissing))
+            return
+        }
+        onResetDatabase(completion)
     }
 
     /// 手动触发 iCloud 同步（封装内部 syncService，避免暴露依赖）
-    func forceSync() {
+    /// 返回真实结果供 UI 如实反馈（用户反馈 2026-11-17：消除"同步请求已发送"假说明）
+    @discardableResult
+    func forceSync() -> SyncOutcome {
         syncService.forceSync()
+    }
+
+    /// 手动同步（2026-11-19 修复）：先刷新 iCloud 账户状态快照再执行，结果异步返回。
+    /// 同步按钮统一走本入口 —— 旧 forceSync 读启动时的一次性快照，
+    /// 重登 iCloud 后不重启 App 恒报「账户不可用」（用户实测命中）。
+    func syncNow(completion: @escaping (SyncOutcome) -> Void) {
+        syncService.syncNow(completion: completion)
+    }
+
+    /// 同步状态文案（用户反馈 2026-11-19）：如实反映「已挂载自动同步」「尚未检测完成」
+    /// 「账户不可用」「已关闭」四种状态，不把「开关为开」谎称为「已同步」，
+    /// 也不把「store 仍在加载」误报成「账户不可用」。
+    var cloudSyncStatusText: String {
+        guard iCloudSyncEnabled else { return L10n.shared.同步状态已关闭 }
+        switch syncService.mountStatus {
+        case .available:     return L10n.shared.同步状态自动
+        case .notDetermined: return L10n.shared.同步状态检测中
+        case .unavailable:   return L10n.shared.同步状态账户不可用
+        }
+    }
+
+    /// 状态行的图标（语义与文案一一对应）
+    var cloudSyncStatusIcon: String {
+        guard iCloudSyncEnabled else { return "icloud.slash" }
+        switch syncService.mountStatus {
+        case .available:     return "checkmark.icloud"
+        case .notDetermined: return "icloud"
+        case .unavailable:   return "exclamationmark.icloud"
+        }
     }
 
     // MARK: - 通知与后台刷新

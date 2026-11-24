@@ -275,6 +275,8 @@ struct EventEditView: View {
             }
             .navigationTitle(isEditing ? L10n.shared.编辑事件 : L10n.shared.新建事件)
             .navigationBarTitleDisplayMode(.inline)
+            // 滚动统一调整（2026-11-02）：禁用弹性 + 柔化撞停减速
+            .disableBounce()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L10n.shared.取消) {

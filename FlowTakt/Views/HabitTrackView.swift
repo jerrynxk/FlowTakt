@@ -1,20 +1,21 @@
 import SwiftUI
 import CoreData
 
-// MARK: - 习惯追踪视图（习惯 + 计时）
+// MARK: - 习惯追踪视图（习惯 + 热力图）
+// 2026-11-22：「计时」段移除 —— 正计时统一收敛到「专注」页（TimeRecordView embedded 形态）。
+// 原独立计时页独有的「查看历史日期 + 删除记录」能力已补进专注页正计时，功能无损。
 
 struct HabitTrackView: View {
     @EnvironmentObject var habitViewModel: HabitViewModel
-    @EnvironmentObject var timeRecordViewModel: TimeRecordViewModel
-    @EnvironmentObject var taskViewModel: TaskViewModel
     @EnvironmentObject var l10n: L10n
+    // v1.3.5 iPad 复查 M2：regular 下分段控件按内容宽度收缩，避免两段各拉满约 500pt
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var selectedTab: TrackTab = .habit
 
     enum TrackTab: CaseIterable {
         case habit
         case heatmap
-        case timer
     }
 
     var body: some View {
@@ -25,26 +26,47 @@ struct HabitTrackView: View {
                     switch tab {
                     case .habit:   return Text(l10n.习惯).tag(tab)
                     case .heatmap: return Text(l10n.热力图).tag(tab)
-                    case .timer:   return Text(l10n.计时).tag(tab)
                     }
                 }
             }
             .pickerStyle(.segmented)
+            // v1.3.5 iPad 复查 M2：iPad（regular）detail 区约 1000pt，分段控件默认拉满全宽，
+            // 3→2 段后每段约 500pt、文字显小。用 .fixedSize() 按内容宽收缩（不受 detail 内
+            // frame(maxWidth:) 失效限制），外层空出的宽度由 Spacer 吸收实现居中。
+            // iPhone（compact）保持拉满，不改既有手感。
+            .if(horizontalSizeClass == .regular) { $0.fixedSize() }
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
+            // 无障碍（2026-11-22 审查 L1）：原 label 设为「习惯」与首段同名，读屏出现
+            // 容器与选项同名。改用中性的用途标签「视图切换」，两段文字由 segmented 子选项暴露。
+            .accessibilityLabel(l10n.视图切换)
+            .accessibilityIdentifier("topTabPicker")
 
             switch selectedTab {
             case .habit:
                 HabitListView()
             case .heatmap:
                 HabitHeatmapView()
-            case .timer:
-                TimeRecordView()
-                    .environmentObject(taskViewModel)
             }
         }
+        // 左右滑动切换顶部「习惯 / 热力图」标签（与竖向滚动不冲突）
+        .swipeToSwitchTab(
+            onSwipeLeft: { moveHabitTab(by: 1) },
+            onSwipeRight: { moveHabitTab(by: -1) }
+        )
         // v1.3.4p：iPad 上 NavigationSplitView detail 内的 frame(maxWidth:) 失效（SwiftUI 限制），
         // List/Picker 在 iPad 保持自然宽度（参考邮件/备忘录）
+    }
+
+    /// 按方向切换顶部标签（向左 = 下一个，向右 = 上一个），边界处夹紧不回环
+    private func moveHabitTab(by direction: Int) {
+        let order = TrackTab.allCases
+        guard let idx = order.firstIndex(of: selectedTab) else { return }
+        let newIdx = min(max(idx + direction, 0), order.count - 1)
+        if newIdx != idx {
+            selectedTab = order[newIdx]
+        }
     }
 }
 
@@ -67,35 +89,69 @@ struct HabitHeatmapView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 20) {
-                    statBlock(value: "\(habitViewModel.heatmapTotalCheckIns)", label: l10n.打卡次数)
-                    statBlock(value: "\(habitViewModel.heatmapCounts.values.filter { $0 > 0 }.count)", label: l10n.打卡天数)
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
+        VStack(spacing: 0) {
+            // 标题行：「打卡热力图」大标题（本页无操作按钮），紧贴顶部分段控件（2026-10-14）。
+            // 与「习惯」子页保持同构，消除系统大标题的导航栏空档。
+            titleRow
 
-                heatmapGrid
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 20) {
+                        statBlock(value: "\(habitViewModel.heatmapTotalCheckIns)", label: l10n.打卡次数)
+                        statBlock(value: "\(habitViewModel.heatmapCounts.values.filter { $0 > 0 }.count)", label: l10n.打卡天数)
+                    }
                     .frame(maxWidth: .infinity, alignment: .center)
 
-                HStack(spacing: 6) {
-                    Text(l10n.热力图图例)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    ForEach(0..<5, id: \.self) { level in
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(color(forLevel: level))
-                            .frame(width: cellSize * 0.85, height: cellSize * 0.85)
+                    heatmapGrid
+                        .frame(maxWidth: .infinity, alignment: .center)
+
+                    HStack(spacing: 6) {
+                        Text(l10n.少)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        ForEach(0..<5, id: \.self) { level in
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(color(forLevel: level))
+                                .frame(width: cellSize * 0.85, height: cellSize * 0.85)
+                                // 无障碍补齐（2026-11-02）：色块不含文本，避免在读屏里
+                                // 留下 5 个无标签的空白元素
+                                .accessibilityHidden(true)
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    // 无障碍补齐（2026-11-02）：整组图例用一句说明替代「少」+ 5 个空色块
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(l10n.热力图图例说明)
                 }
-                .frame(maxWidth: .infinity, alignment: .center)
+                .padding()
             }
-            .padding()
+            .background(Color.appBackground)
+            .disableBounce()
         }
         .background(Color.appBackground)
         .navigationTitle(l10n.打卡热力图)
+        // 隐藏系统导航栏，标题行成为内容首项、紧贴顶部分段控件。
+        // 保留 navigationTitle 供 VoiceOver / 深链标题使用。
+        .toolbar(.hidden, for: .navigationBar)
         // 幂等加载：VM 已在其上下文变化订阅中自动刷新，此处兜底首次进入
         .task { habitViewModel.reloadHeatmap(weeks: weeks) }
+    }
+
+    // MARK: - Title Row
+
+    /// 标题行：「打卡热力图」大标题（本页无操作按钮）。
+    /// 规格对齐 TaskListView.titleRow：largeTitle.bold、水平边距 16。
+    private var titleRow: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(l10n.打卡热力图)
+                .font(.largeTitle.weight(.bold))
+                // 无障碍（2026-10-14）：大标题标记为一级标题（VoiceOver 转子可按标题跳转）
+                .accessibilityHeading(.h1)
+            Spacer(minLength: 12)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 4)
     }
 
     private var heatmapGrid: some View {
@@ -143,7 +199,10 @@ struct HabitHeatmapView: View {
         let key = calendar.startOfDay(for: date)
         let count = habitViewModel.heatmapCounts[key] ?? 0
         return RoundedRectangle(cornerRadius: 3)
-            .fill(isFuture ? Color(.systemGray6) : color(forCount: count))
+            // 2026-11-02：isFuture 原为 systemGray6 —— 深色下 #1C1C1E 与列表行背景
+            // 同色，未来日期格子完全不可见（此格与"未打卡"格子的唯一区别就是底色）。
+            // 统一改用 systemGray5，靠 opacity 0.35 区分"未来"语义。
+            .fill(isFuture ? Color(.systemGray5) : color(forCount: count))
             .frame(width: cellSize, height: cellSize)
             .opacity(isFuture ? 0.35 : 1)
             .accessibilityHidden(true)
@@ -185,12 +244,5 @@ struct HabitHeatmapView: View {
             habitService: HabitService(persistenceController: .shared),
             persistenceController: .shared
         ))
-        .environmentObject(TimeRecordViewModel(
-            timeRecordService: TimeRecordService(persistenceController: .shared),
-            persistenceController: .shared
-        ))
-        .environmentObject(TaskViewModel(
-            taskService: TaskService(persistenceController: .shared),
-            persistenceController: .shared
-        ))
+        .environmentObject(L10n.shared)
 }

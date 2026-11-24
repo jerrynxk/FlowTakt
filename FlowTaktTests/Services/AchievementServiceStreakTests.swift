@@ -27,7 +27,7 @@ final class AchievementServiceStreakTests: XCTestCase {
     /// 创建一个指定日期的已完成会话
     private func createCompletedSession(on date: Date) {
         let session = FocusSession(context: persistence.viewContext)
-        session.id = UUID()
+        session.storageId = UUID()
         session.startTime = date
         session.endTime = date.addingTimeInterval(1500)
         session.plannedDuration = 1500

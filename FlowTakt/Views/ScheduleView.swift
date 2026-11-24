@@ -59,15 +59,24 @@ struct ScheduleView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // 标题行：「日程」大标题与操作按钮（⚡快速添加 / ＋新建事件）并排一行，
+                // 紧贴顶部分段控件（2026-10-14）。
+                // 原先两个按钮挂在导航栏 primaryAction、大标题由 .large 模式渲染，
+                // 系统把按钮渲染在标题上方并额外预留导航栏高度，视觉上下分离；
+                // 现改为内容区自绘标题行，与「任务」页（TaskListView）保持同构。
+                titleRow
+
                 // 月 / 周 视图切换
                 Picker("", selection: $viewMode) {
                     Text(L10n.shared.月视图).tag(ScheduleViewMode.month)
                     Text(L10n.shared.周视图).tag(ScheduleViewMode.week)
                 }
                 .pickerStyle(.segmented)
+                // 修复（P2-40）：与今日已补的四处分段控件保持同一无障碍约定
+                .accessibilityLabel(L10n.shared.视图切换)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 6)
-                .onChange(of: viewMode) { mode in
+                .onChange(of: viewMode) { _, mode in
                     if mode == .week {
                         scheduleViewModel.refreshForWeek(containing: scheduleViewModel.selectedDate)
                     }
@@ -88,7 +97,9 @@ struct ScheduleView: View {
             }
             .background(Color.appBackground)
             .navigationTitle(L10n.shared.日程)
-            .navigationBarTitleDisplayMode(.large)
+            // 隐藏系统导航栏，标题行成为内容首项、紧贴顶部分段控件（2026-10-14）。
+            // 保留 navigationTitle 供 VoiceOver / 深链标题使用。
+            .toolbar(.hidden, for: .navigationBar)
             // 消费来自 Widget 深链的具体事件定位（flowtakt://schedule/<id>）
             .onReceive(appDependency.$pendingScheduleItemID) { id in
                 guard let id, !id.isEmpty else { return }
@@ -111,27 +122,6 @@ struct ScheduleView: View {
                 highlightedEventID = nil
                 DispatchQueue.main.async { highlightedEventID = event.id }
                 appDependency.pendingScheduleItemID = nil
-            }
-            .toolbar {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    // 自然语言快速添加（B2）
-                    Button {
-                        quickAddText = ""
-                        showQuickAddAlert = true
-                    } label: {
-                        Image(systemName: "bolt.fill")
-                            .fontWeight(.semibold)
-                    }
-                    .accessibilityLabel(L10n.shared.快速添加日程)
-
-                    Button {
-                        showNewEventSheet = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .fontWeight(.semibold)
-                    }
-                    .accessibilityLabel(L10n.shared.新建事件)
-                }
             }
             .alert(L10n.shared.快速添加日程, isPresented: $showQuickAddAlert) {
                 TextField(L10n.shared.快速添加提示, text: $quickAddText)
@@ -190,6 +180,49 @@ struct ScheduleView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Title Row
+
+    /// 标题行：「日程」大标题 + 「⚡快速添加」「＋新建事件」按钮（同一行）。
+    /// 规格对齐 TaskListView.titleRow：largeTitle.bold、水平边距 16、按钮 44×44 命中区、focusRed 着色。
+    private var titleRow: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(L10n.shared.日程)
+                .font(.largeTitle.weight(.bold))
+                // 无障碍（2026-10-14）：大标题标记为一级标题（VoiceOver 转子可按标题跳转）
+                .accessibilityHeading(.h1)
+            Spacer(minLength: 12)
+
+            // 自然语言快速添加（B2）
+            Button {
+                quickAddText = ""
+                showQuickAddAlert = true
+            } label: {
+                Image(systemName: "bolt.fill")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.focusRed)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.shared.快速添加日程)
+
+            Button {
+                showNewEventSheet = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.focusRed)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.shared.新建事件)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 4)
     }
 
     // MARK: - Month Header
@@ -393,6 +426,8 @@ struct ScheduleView: View {
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
+            // 滚动统一调整（2026-11-02）：禁用弹性 + 柔化撞停减速
+            .disableBounce()
         }
     }
 
@@ -499,7 +534,8 @@ struct ScheduleView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(dayCellAccessibilityLabel(date: date, dayNumber: dayNumber))
-        .accessibilityValue(dayCellAccessibilityValue(hasEvents: hasEvents, date: date))
+        .accessibilityValue(dayCellAccessibilityValue(hasEvents: hasEvents, date: date,
+                                                        eventDays: eventsByDayDictionary.keys.map { calendar.startOfDay(for: $0) }.reduce(into: Set<Date>()) { $0.insert($1) }))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -561,15 +597,18 @@ struct ScheduleView: View {
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
+            // 滚动统一调整（2026-11-02）：禁用弹性 + 柔化撞停减速
+            .disableBounce()
         }
     }
 
     private func eventRow(_ event: ScheduleItem) -> some View {
         HStack(spacing: 12) {
-            // Color dot
+            // Color dot（纯装饰：颜色语义已由标题文本承载）
             Circle()
                 .fill(Color(hex: event.colorHex ?? ScheduleColor.red.rawValue))
                 .frame(width: 10, height: 10)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
@@ -577,7 +616,7 @@ struct ScheduleView: View {
                         Image(systemName: "bell.fill")
                             .font(.caption2)
                             .foregroundColor(.orange)
-                            .accessibilityLabel(L10n.shared.已开启提醒)
+                            .accessibilityHidden(true)
                     }
                     Text(event.title)
                         .font(.body)
@@ -588,6 +627,7 @@ struct ScheduleView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "clock")
                         .font(.caption2)
+                        .accessibilityHidden(true)
                     Text(event.timeRangeText)
                         .font(.caption)
                 }
@@ -597,6 +637,7 @@ struct ScheduleView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "mappin")
                             .font(.caption2)
+                            .accessibilityHidden(true)
                         Text(location)
                             .font(.caption)
                     }
@@ -609,8 +650,21 @@ struct ScheduleView: View {
             Image(systemName: "chevron.right")
                 .font(.caption)
                 .foregroundColor(.secondary.opacity(0.5))
+                .accessibilityHidden(true)
         }
         .padding(.vertical, 4)
+        // 无障碍补齐（2026-11-02）：整行此前被拆成「时钟」「10:00 – 11:00」「定位」等多个
+        // 碎片元素，装饰图标还会读出符号名。合并为一句：标题，时间，地点，已开启提醒。
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(eventAccessibilityLabel(event))
+    }
+
+    /// 日程行合并读屏文案
+    private func eventAccessibilityLabel(_ event: ScheduleItem) -> String {
+        var parts = [event.title, event.timeRangeText]
+        if let location = event.location, !location.isEmpty { parts.append(location) }
+        if event.reminderEnabled { parts.append(L10n.shared.已开启提醒) }
+        return parts.joined(separator: "，")
     }
 
     private var emptyEventState: some View {
@@ -620,6 +674,8 @@ struct ScheduleView: View {
             Image(systemName: "calendar.day.timeline.left")
                 .font(.system(size: 36))
                 .foregroundColor(.secondary.opacity(0.4))
+                // 无障碍（2026-10-14）：空状态装饰图标不单独朗读
+                .accessibilityHidden(true)
 
             Text(L10n.shared.当日无日程)
                 .font(.subheadline)
@@ -642,7 +698,10 @@ struct ScheduleView: View {
         return parts.joined(separator: "，")
     }
 
-    private func dayCellAccessibilityValue(hasEvents: Bool, date: Date) -> String {
+    /// 修复（2026-10-14 P2）：传入**已预算好的**事件日集合 —— 原实现在每个格子内重建
+    /// `eventsByDayDictionary`（42 格 = 42 次全量字典重建，预计算成果完全没被利用）。
+    private func dayCellAccessibilityValue(hasEvents: Bool, date: Date,
+                                            eventDays: Set<Date>) -> String {
         let eventsOnDay = eventsByDayDictionary[calendar.startOfDay(for: date)]?.count ?? 0
         if hasEvents {
             return L10n.shared.dayEventCount(eventsOnDay)
@@ -708,4 +767,5 @@ struct ScheduleView: View {
         .environmentObject(AppDependency().scheduleViewModel)
         .environmentObject(AppDependency().taskViewModel)
         .environmentObject(AppDependency())
+        .environmentObject(L10n.shared)
 }

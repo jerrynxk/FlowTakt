@@ -25,6 +25,19 @@ final class ReviewScreenshotUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 3)
         save("01-focus")
 
+        // 1b. 专注 → 正计时（用户反馈 2026-11-19：正计时入口并入专注主面板）
+        let stopwatchEntry = app.buttons["switchToStopwatchButton"]
+        XCTAssertTrue(stopwatchEntry.waitForExistence(timeout: 5),
+                      "专注主面板应提供「正计时」入口")
+        stopwatchEntry.tap()
+        Thread.sleep(forTimeInterval: 2)
+        save("01b-focus-stopwatch")
+        let pomodoroEntry = app.buttons["switchToPomodoroButton"]
+        XCTAssertTrue(pomodoroEntry.waitForExistence(timeout: 5),
+                      "正计时面板应能切回番茄钟")
+        pomodoroEntry.tap()
+        Thread.sleep(forTimeInterval: 1)
+
         // 2. 计划 → 任务
         app.tabBars.buttons["计划"].tap()
         Thread.sleep(forTimeInterval: 2)

@@ -20,8 +20,19 @@ protocol ScheduleServiceProtocol {
 final class ScheduleService: ScheduleServiceProtocol {
     private let persistenceController: PersistenceController
 
+    /// 错误回调：供 ViewModel 层监听 Service 内部错误（2026-10-15 审查 P1-007 接线）
+    var onError: ((Error) -> Void)?
+
     private var viewContext: NSManagedObjectContext {
         persistenceController.viewContext
+    }
+    /// save 失败统一上报（判据收口，2026-10-15 审查 P1-001）：
+    /// 所有写路径经此检查，store 未就绪/保存失败时不再静默丢弃。
+    func saveAndReport() {
+        if !persistenceController.save() {
+            onError?(AppError.coreDataSaveFailed(NSError(domain: "FlowTakt.ScheduleService",
+                                                         code: NSFileWriteUnknownError)))
+        }
     }
 
     init(persistenceController: PersistenceController) {
@@ -32,10 +43,14 @@ final class ScheduleService: ScheduleServiceProtocol {
 
     func createEvent(title: String, startDate: Date, endDate: Date?, isAllDay: Bool, location: String?, notes: String?, colorHex: String?, category: ScheduleCategory, repeatRule: RepeatRule, reminderEnabled: Bool, reminderLeadMinutes: Int, task: Task?) -> ScheduleItem {
         let event = ScheduleItem(context: viewContext)
-        event.id = UUID()
+        event.storageId = UUID()
         event.title = title
         event.startDate = startDate
-        event.endDate = endDate
+        // 修复（2026-10-14 P2）：与 updateEvent 对称 —— 表单未校验 end ≥ start，
+        // 直接落库会产生「结束早于开始」的脏区间（endDate 可为 nil 表示无结束时间）
+        if let endDate {
+            event.endDate = endDate < startDate ? startDate : endDate
+        }
         event.isAllDay = isAllDay
         event.location = location
         event.notes = notes
@@ -47,7 +62,7 @@ final class ScheduleService: ScheduleServiceProtocol {
         event.task = task
         event.createdAt = Date()
         event.updatedAt = Date()
-        persistenceController.save()
+        saveAndReport()
         return event
     }
 
@@ -70,19 +85,20 @@ final class ScheduleService: ScheduleServiceProtocol {
         if let reminderEnabled = reminderEnabled { event.reminderEnabled = reminderEnabled }
         if let reminderLeadMinutes = reminderLeadMinutes { event.reminderLeadMinutes = Int32(reminderLeadMinutes) }
         event.updatedAt = Date()
-        persistenceController.save()
+        saveAndReport()
     }
 
     // MARK: - 删除
 
     func deleteEvent(_ event: ScheduleItem) {
         viewContext.delete(event)
-        persistenceController.save()
+        saveAndReport()
     }
 
     // MARK: - 查询
 
     func fetchEvents(from startDate: Date, to endDate: Date) -> [ScheduleItem] {
+        guard persistenceController.canFetchSafely("ScheduleService.fetchEvents") else { return [] }
         let request = ScheduleItem.fetchRequest()
         // 时间范围交集：事件开始时间 < 查询结束时间 AND (事件结束时间为 nil OR 事件结束时间 > 查询开始时间)
         request.predicate = NSPredicate(
@@ -109,6 +125,7 @@ final class ScheduleService: ScheduleServiceProtocol {
     }
 
     func fetchAllEvents() -> [ScheduleItem] {
+        guard persistenceController.canFetchSafely("ScheduleService.fetchAllEvents") else { return [] }
         let request = ScheduleItem.fetchRequest()
         request.sortDescriptors = [NSSortDescriptor(keyPath: \ScheduleItem.startDate, ascending: true)]
         do {
@@ -120,6 +137,7 @@ final class ScheduleService: ScheduleServiceProtocol {
     }
 
     func fetchEvent(id: UUID) -> ScheduleItem? {
+        guard persistenceController.canFetchSafely("ScheduleService.fetchEvent") else { return nil }
         let request = ScheduleItem.fetchRequest()
         request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
         request.fetchLimit = 1

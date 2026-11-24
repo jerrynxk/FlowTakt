@@ -86,7 +86,7 @@ final class CoreDataMigrationTests: XCTestCase {
         let recordNote = "迁移测试打卡"
 
         let habit = Habit(entity: NSEntityDescription.entity(forEntityName: "Habit", in: ctx)!, insertInto: ctx)
-        habit.id = habitID
+        habit.storageId = habitID
         habit.name = habitName
         habit.iconName = "star"
         habit.colorHex = "#FF9500"
@@ -96,7 +96,7 @@ final class CoreDataMigrationTests: XCTestCase {
         habit.updatedAt = Date(timeIntervalSince1970: 1_700_000_000)
 
         let record = HabitRecord(entity: NSEntityDescription.entity(forEntityName: "HabitRecord", in: ctx)!, insertInto: ctx)
-        record.id = recordID
+        record.storageId = recordID
         record.date = Date(timeIntervalSince1970: 1_700_000_000)
         record.count = 3
         record.note = recordNote
@@ -188,7 +188,7 @@ final class CoreDataMigrationTests: XCTestCase {
 
         // When：插入一条 habit 为 nil 的记录（模拟 CloudKit 合并产生的孤儿记录）
         let orphan = HabitRecord(entity: NSEntityDescription.entity(forEntityName: "HabitRecord", in: ctx)!, insertInto: ctx)
-        orphan.id = UUID()
+        orphan.storageId = UUID()
         orphan.date = Date()
         orphan.count = 1
         orphan.note = "孤儿记录"

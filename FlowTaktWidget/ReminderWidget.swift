@@ -7,6 +7,12 @@ import SwiftUI
 struct FlowTaktWidgetBundle: WidgetBundle {
     var body: some Widget {
         ReminderWidget()
+        // 专注 Live Activity（灵动岛 + 锁屏，2026-10-14）。
+        // 部署目标 16.0 < ActivityKit 完整能力的 16.2，故做可用性判断：
+        // 16.2 以下系统不注册该 Widget（仅影响灵动岛/锁屏活动展示）。
+        if #available(iOSApplicationExtension 16.2, *) {
+            FocusLiveActivityWidget()
+        }
     }
 }
 
@@ -18,9 +24,12 @@ struct ReminderWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: ReminderProvider()) { entry in
             ReminderWidgetView(entry: entry)
-                .background(Color(.secondarySystemBackground))
                 // 点击小组件深链：打开 App 并跳转到「计划 → 日程」
                 .widgetURL(URL(string: "flowtakt://schedule"))
+                // 注：背景已改用 iOS 17 强制的 containerBackground（见 ReminderWidgetView），
+                // 此前的 .background(Color(.secondarySystemBackground)) 属旧 API，
+                // 在真机（锁屏 / 待机 / 部分主屏环境）会显示
+                // "Please adopt containerBackground API" 占位提示（2026-10-15 修复）。
         }
         .configurationDisplayName(displayName)
         .description(descriptionText)
@@ -97,22 +106,37 @@ struct ReminderEntry: TimelineEntry {
 // MARK: - 视图
 
 struct ReminderWidgetView: View {
+
     var entry: ReminderEntry
     @Environment(\.widgetFamily) private var family
-    private let calendar = Calendar.current
 
     private var isEnglish: Bool {
         ReminderWidget.widgetIsEnglish
     }
 
     var body: some View {
-        switch family {
-        case .accessoryRectangular, .accessoryInline:
-            AccessoryReminderView(entry: entry, family: family)
-        case .accessoryCircular:
-            AccessoryCircularView(entry: entry)
-        default:
-            standardContent
+        Group {
+            switch family {
+            case .accessoryRectangular, .accessoryInline:
+                AccessoryReminderView(entry: entry, family: family)
+            case .accessoryCircular:
+                AccessoryCircularView(entry: entry)
+            default:
+                standardContent
+            }
+        }
+        // iOS 17+ 强制要求采用 containerBackground：未采用的 widget 在真机
+        // （锁屏 / StandBy / 部分主屏渲染环境）会显示
+        // "Please adopt containerBackground API" 占位提示（2026-10-15 修复）。
+        // 主屏幕沿用原 secondarySystemBackground；锁屏 accessory 系列背景交还系统
+        // （clear，由系统绘制 vibrancy 材质，自定义色会被忽略且可能干扰）。
+        .containerBackground(for: .widget) {
+            switch family {
+            case .systemSmall, .systemMedium:
+                Color(.secondarySystemBackground)
+            default:
+                Color.clear
+            }
         }
     }
 
@@ -249,18 +273,26 @@ private struct AccessoryReminderView: View {
 
 /// 圆形：今日完成番茄数
 private struct AccessoryCircularView: View {
+    /// 进度弧上限（与「每日 8 个番茄」量级一致）；修复 P2：原先上界=值本身 → 弧恒满格
+    static let gaugeCeiling = 8
+
     let entry: ReminderEntry
     private var isEnglish: Bool { ReminderWidget.widgetIsEnglish }
 
     var body: some View {
         let summary = WidgetDataStore.readFocusSummary()
         let count = summary?.completedPomodoros ?? 0
-        Gauge(value: Double(count), in: 0...Double(max(count, 1))) {
+        // 修复（P2）：原区间上界 = 值本身 → 进度弧恒为满格，不携带信息。改为固定上限。
+        Gauge(value: Double(min(count, AccessoryCircularView.gaugeCeiling)), in: 0...Double(AccessoryCircularView.gaugeCeiling)) {
             Image(systemName: "timer")
+                // 无障碍补齐（2026-11-02）：Gauge 的 label 只承载图标时，
+                // 读屏会把它念成「计时器」而非「今日完成番茄」
+                .accessibilityHidden(true)
         } currentValueLabel: {
             Text("\(count)").font(.headline)
         }
         .gaugeStyle(.accessoryCircular)
+        .accessibilityLabel(isEnglish ? "Pomodoros completed today" : "今日完成番茄")
         .widgetURL(URL(string: "flowtakt://focus"))
     }
 }
@@ -292,6 +324,8 @@ private struct ReminderRow: View {
                 .foregroundColor(Color(hex: reminder.colorHex ?? "#007AFF"))
                 .font(.caption)
                 .frame(width: 16)
+                // 无障碍补齐（2026-11-02）：分类图标不单独朗读（分类名已在下方文案中）
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(reminder.title)
                     .font(.caption)
@@ -304,6 +338,13 @@ private struct ReminderRow: View {
             }
             Spacer(minLength: 0)
         }
+        // 无障碍补齐（2026-11-02）：标题、分类、倒计时原被拆成 3 个碎片元素，
+        // 合并为一句「妈妈生日，生日，明天」
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            [reminder.title, cat.displayName, countdownText]
+                .joined(separator: isEnglish ? ", " : "，")
+        )
     }
 }
 

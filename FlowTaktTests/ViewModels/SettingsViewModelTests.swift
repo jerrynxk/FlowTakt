@@ -17,11 +17,15 @@ final class SettingsViewModelTests: XCTestCase {
         let domain = Bundle.main.bundleIdentifier ?? ""
         UserDefaults.standard.removePersistentDomain(forName: domain)
         // 单独清理常用 key
+        // 修复（2026-10-14 审查 T4）：补齐 habitReminder* 等遗漏键 —— 漏清理会让
+        // 「默认 20:00」类断言依赖残留值，并在类重跑 / 未来插入用例时出现假红。
         let keys = ["focusDuration", "shortBreakDuration", "longBreakDuration",
                     "longBreakAfterRounds", "soundEnabled", "vibrationEnabled",
                     "dailyReminderEnabled", "iCloudSyncEnabled", "autoStartBreaks",
                     "autoStartFocus", "appLanguage", "reminderHour", "reminderMinute",
-                    "weeklyReportEnabled", "colorSchemeOption", "speechEnabled"]
+                    "weeklyReportEnabled", "colorSchemeOption", "speechEnabled",
+                    "habitReminderEnabled", "habitReminderHour", "habitReminderMinute",
+                    "whiteNoiseAutoPlay"]
         for key in keys {
             UserDefaults.standard.removeObject(forKey: key)
         }
@@ -31,6 +35,10 @@ final class SettingsViewModelTests: XCTestCase {
     }
 
     override func tearDown() {
+        // 修复（T4）：tearDown 还原 UserDefaults —— 本类用例会写入 iCloudSyncEnabled 等键，
+        // 残留到其它测试类会让「重置数据库」用例走真实 CloudKit 网络分支（假红 + 真实请求）。
+        let domain = Bundle.main.bundleIdentifier ?? ""
+        UserDefaults.standard.removePersistentDomain(forName: domain)
         viewModel = nil
         mockSyncService = nil
         cancellables = nil
@@ -51,6 +59,10 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.dailyReminderEnabled)
         XCTAssertTrue(viewModel.autoStartBreaks)
         XCTAssertFalse(viewModel.autoStartFocus)
+        // 用户反馈 2026-11-19：iCloud 同步默认开启（自动同步），不再要求用户先手动打开
+        XCTAssertTrue(viewModel.iCloudSyncEnabled)
+        // 白噪音自动播放默认开启（关闭后记忆用户选择）
+        XCTAssertTrue(viewModel.autoPlayWhiteNoise)
     }
 
     func testLanguageOptions_AreCorrect() {
@@ -156,7 +168,8 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.autoStartBreaks)
         XCTAssertFalse(viewModel.autoStartFocus)
         XCTAssertFalse(viewModel.dailyReminderEnabled)
-        XCTAssertFalse(viewModel.iCloudSyncEnabled)
+        // 恢复默认 = 恢复自动同步（2026-11-19）
+        XCTAssertTrue(viewModel.iCloudSyncEnabled)
         XCTAssertEqual(viewModel.appLanguage, "zh-Hans", "语言应重置为默认中文")
         XCTAssertEqual(L10n.shared.appLanguage, "zh-Hans")
         XCTAssertEqual(viewModel.colorSchemeOption, "system")
@@ -226,17 +239,33 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertTrue(mockSyncService.forceSyncCalled)
     }
 
+    /// iCloud 自动同步：从未设置过（新装/升级）视为开启
+    func testCloudSyncPreference_DefaultIsEnabled() {
+        XCTAssertTrue(PersistenceController.isCloudSyncEnabledByUser,
+                      "iCloud 自动同步应默认开启（用户反馈 2026-11-19）")
+    }
+
+    /// 用户显式关闭后必须尊重选择（不能再被默认值覆盖）
+    func testCloudSyncPreference_RespectsExplicitDisable() {
+        UserDefaults.standard.set(false, forKey: PersistenceController.iCloudSyncEnabledKey)
+        XCTAssertFalse(PersistenceController.isCloudSyncEnabledByUser)
+    }
+
     // ========================================================================
     // MARK: - 数据库重置回调
     // ========================================================================
 
-    func testResetDatabase_WhenCallbackNotSet_ThenCallsCompletionWithFalse() {
+    func testResetDatabase_WhenCallbackNotSet_ThenCompletesWithFailure() {
         // Given
-        let expectation = expectation(description: "无回调时 completion(false)")
+        let expectation = expectation(description: "无回调时应返回 failure")
 
         // When
-        viewModel.resetDatabase { success in
-            XCTAssertFalse(success)
+        viewModel.resetDatabase { result in
+            guard case .failure = result else {
+                XCTFail("未注入回调时不应返回 success")
+                expectation.fulfill()
+                return
+            }
             expectation.fulfill()
         }
 
@@ -244,14 +273,18 @@ final class SettingsViewModelTests: XCTestCase {
         wait(for: [expectation], timeout: 1)
     }
 
-    func testResetDatabase_WhenCallbackSucceeds_ThenCallsCompletionWithTrue() {
+    func testResetDatabase_WhenCallbackSucceeds_ThenCompletesWithSuccess() {
         // Given
-        viewModel.onResetDatabase = { completion in completion(true) }
-        let expectation = expectation(description: "回调成功时 completion(true)")
+        viewModel.onResetDatabase = { completion in completion(.success(())) }
+        let expectation = expectation(description: "回调成功时应返回 success")
 
         // When
-        viewModel.resetDatabase { success in
-            XCTAssertTrue(success)
+        viewModel.resetDatabase { result in
+            guard case .success = result else {
+                XCTFail("回调返回成功时应透传 success，实际：\(result)")
+                expectation.fulfill()
+                return
+            }
             expectation.fulfill()
         }
 
@@ -259,19 +292,29 @@ final class SettingsViewModelTests: XCTestCase {
         wait(for: [expectation], timeout: 1)
     }
 
-    func testResetDatabase_WhenCallbackFails_ThenCallsCompletionWithFalse() {
+    /// 修复（2026-10-14）：云端清除失败必须原样透传给 UI，
+    /// 否则用户只会看到笼统的「重置失败」而不知道数据其实没动。
+    func testResetDatabase_WhenCloudPurgeFails_ThenPropagatesErrorReason() {
         // Given
-        viewModel.onResetDatabase = { completion in completion(false) }
-        let expectation = expectation(description: "回调失败时 completion(false)")
+        struct CloudReason: LocalizedError, Equatable {
+            let code: Int
+            var errorDescription: String? { "云端网络错误" }
+        }
+        let reason = CloudReason(code: 5)
+        viewModel.onResetDatabase = { completion in completion(.failure(reason)) }
+        let expectation = expectation(description: "云端失败应透传原因")
 
         // When
-        viewModel.resetDatabase { success in
-            XCTAssertFalse(success)
+        var received: Error?
+        viewModel.resetDatabase { result in
+            if case .failure(let error) = result { received = error }
             expectation.fulfill()
         }
 
         // Then
         wait(for: [expectation], timeout: 1)
+        XCTAssertEqual(received as? CloudReason, reason, "失败原因必须原样透传，不得被吞掉")
+        XCTAssertEqual(received?.localizedDescription, "云端网络错误")
     }
 
     // ========================================================================

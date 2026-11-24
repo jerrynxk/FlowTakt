@@ -65,7 +65,7 @@ final class ScheduleServiceTests: XCTestCase {
     func testCreateEvent_WithTask_ThenTaskIsLinked() {
         let context = persistence.viewContext
         let task = Task(context: context)
-        task.id = UUID()
+        task.storageId = UUID()
         task.title = "关联任务"
         task.status = TaskStatus.active.rawValue
         task.estimatedPomodoros = 2

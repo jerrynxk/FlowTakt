@@ -36,10 +36,13 @@ struct FocusPhaseBadge: View {
         HStack(spacing: 5) {
             Image(systemName: phaseIcon)
                 .font(.caption2)
+                // 无障碍补齐（2026-11-02）：装饰图标不单独朗读（"火焰"「专注」重复）
+                .accessibilityHidden(true)
             Text(phaseText)
                 .font(.caption2.weight(.semibold))
         }
         .foregroundColor(phaseColor)
+        .accessibilityElement(children: .combine)
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
         // 视觉优化（2026-10-03）：改为 Capsule 并降低底色透明度。
@@ -72,6 +75,8 @@ struct FocusPhaseBadge_Previews: PreviewProvider {
                 taskService: TaskService(persistenceController: PersistenceController.shared),
                 speechService: SpeechService()
             ))
-    }
+            .environmentObject(L10n.shared)
+    
+}
 }
 #endif

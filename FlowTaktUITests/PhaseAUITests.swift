@@ -28,7 +28,9 @@ final class PhaseAUITests: XCTestCase {
 
         // 1. 计划 tab（默认任务页）：排序入口存在
         app.tabBars.buttons["计划"].tap()
-        let sortButton = app.buttons["排序"]
+        // 无障碍补齐（2026-11-02）：排序入口的 label 已扩展为「排序：<当前排序方式>」，
+        // 精确文案匹配会随排序状态变化 → 改按 accessibilityIdentifier 查询
+        let sortButton = app.descendants(matching: .any)["sortMenu"]
         XCTAssertTrue(sortButton.waitForExistence(timeout: 4), "任务页应有排序入口")
 
         // 2. 计划内切到「日程」→ 周视图切换存在并可用
@@ -40,7 +42,9 @@ final class PhaseAUITests: XCTestCase {
 
         // 3. 统计 tab：年热力图存在
         app.tabBars.buttons["统计"].tap()
-        let heatmapText = app.staticTexts["专注年热力图"]
-        XCTAssertTrue(heatmapText.waitForExistence(timeout: 4), "统计页应有专注年热力图")
+        // 修复（2026-10-14 审查 T3）：改按 accessibilityIdentifier 查询（原先按中文 label
+        // 精确匹配，依赖 combine 容器的隐式暴露行为）。descendants(.any) 兼容容器元素类型不确定。
+        let heatmap = app.descendants(matching: .any)["yearHeatmap"]
+        XCTAssertTrue(heatmap.waitForExistence(timeout: 4), "统计页应有专注年热力图")
     }
 }

@@ -13,7 +13,13 @@ enum FocusPhase: String, Codable, CaseIterable {
 /// 专注会话状态
 enum SessionStatus: String, Codable {
     case running
+    /// 已暂停（2026-10-14 审查 P1-9 新增）：暂停状态必须落库，否则「暂停后进程被回收」
+    /// 会按挂钟时间误判为「已超时完成」，把用户实际只专注了几分钟的会话记成完整番茄。
+    case paused
     case completed
+    /// 提前结束（用户反馈 2026-11-17）：用户主动按「停止」但未走完计划时长。
+    /// 净专注时长计入统计，但不算完成番茄、不发积分、不计完成率/连续天数。
+    case earlyCompleted
     case interrupted
     case abandoned
 }

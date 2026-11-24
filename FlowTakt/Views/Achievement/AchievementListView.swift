@@ -29,33 +29,58 @@ struct AchievementListView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(spacing: 20) {
-                    // 积分概览
-                    PointsDisplayView()
-                        .environmentObject(achievementViewModel)
-                        .padding(.horizontal)
+            VStack(spacing: 0) {
+                // 标题行：「成就」大标题（本页无操作按钮），紧贴顶部分段控件（2026-10-14）。
+                // 消除系统 .large 大标题在分段控件下方留下的导航栏空档。
+                titleRow
 
-                    // 分类成就网格
-                    ForEach(groupedAchievements, id: \.category) { group in
-                        categorySection(group: group)
+                ScrollView {
+                    LazyVStack(spacing: 20) {
+                        // 积分概览
+                        PointsDisplayView()
+                            .environmentObject(achievementViewModel)
+                            .padding(.horizontal)
+
+                        // 分类成就网格
+                        ForEach(groupedAchievements, id: \.category) { group in
+                            categorySection(group: group)
+                        }
+
+                        // 底部留白
+                        Color.clear.frame(height: 20)
                     }
-
-                    // 底部留白
-                    Color.clear.frame(height: 20)
+                    .padding(.top, 12)
                 }
-                .padding(.top, 12)
+                .background(Color.appBackground.ignoresSafeArea())
+                .disableBounce()
             }
-            .background(Color.appBackground.ignoresSafeArea())
+            .background(Color.appBackground)
             .navigationTitle(L10n.shared.成就)
-            .refreshable {
-                achievementViewModel.refresh()
-            }
+            // 隐藏系统导航栏，标题行成为内容首项、紧贴顶部分段控件。
+            // 保留 navigationTitle 供 VoiceOver / 深链标题使用。
+            .toolbar(.hidden, for: .navigationBar)
             .unlockOverlay(
                 achievement: justUnlockedAchievement,
                 onDismiss: { justUnlockedAchievement = nil }
             )
         }
+    }
+
+    // MARK: - Title Row
+
+    /// 标题行：「成就」大标题（本页无操作按钮）。
+    /// 规格对齐 TaskListView.titleRow：largeTitle.bold、水平边距 16。
+    private var titleRow: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(L10n.shared.成就)
+                .font(.largeTitle.weight(.bold))
+                // 无障碍（2026-10-14）：大标题标记为一级标题（VoiceOver 转子可按标题跳转）
+                .accessibilityHeading(.h1)
+            Spacer(minLength: 12)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 4)
+        .padding(.bottom, 4)
     }
 
     // MARK: - 分类区域
@@ -75,6 +100,12 @@ struct AchievementListView: View {
                             .environmentObject(achievementViewModel)
                     }
                     .buttonStyle(.plain)
+                    // 无障碍补齐（2026-11-02）：未解锁徽章的 handleTap 内部 guard 直接返回，
+                    // 但读屏仍把它声明为可点按钮 → 「可点但毫无反馈」的假交互。
+                    // 注意：不能用 .disabled()——实测它会对整个 label 子树再叠一层降透明度，
+                    // 与 AchievementBadgeView 自身的 0.65 透明度叠加后文字几乎不可读（视觉回归）。
+                    // 改为仅移除按钮语义：读屏播报为静态文本「初次专注，未解锁」，视觉零变化。
+                    .accessibilityRemoveTraits(achievement.isUnlocked ? [] : .isButton)
                 }
             }
             .padding(.horizontal)
@@ -97,6 +128,8 @@ struct AchievementListView: View {
 
                 Text(group.category.displayName)
                     .font(.headline.weight(.semibold))
+                    // 无障碍（2026-10-14）：成就分类名标记为标题（VoiceOver 转子可按分类跳转）
+                    .accessibilityHeading(.h2)
             }
 
             Spacer()
@@ -161,6 +194,8 @@ struct AchievementListView_Previews: PreviewProvider {
                 ),
                 persistenceController: PersistenceController.shared
             ))
-    }
+            .environmentObject(L10n.shared)
+    
+}
 }
 #endif

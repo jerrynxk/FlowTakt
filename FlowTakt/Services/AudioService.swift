@@ -14,6 +14,12 @@ enum WhiteNoiseType: String, CaseIterable {
     case rain
     case stream
     case cafe
+    /// 新增真实环境音（bundle 内 m4a 真实录音，Mixkit License 免费商用，无需署名）：
+    /// ocean 海浪 / forest 森林鸟鸣 / night 夜晚虫鸣 / wind 微风
+    case ocean
+    case forest
+    case night
+    case wind
 
     /// 运行时本地化名称（供 UI 展示）
     var localizedName: String {
@@ -21,8 +27,12 @@ enum WhiteNoiseType: String, CaseIterable {
         case .white:  return L10n.shared.白噪音类型白
         case .rain:   return L10n.shared.白噪音类型雨
         case .stream: return L10n.shared.白噪音类型溪流
-        case .cafe:   return L10n.shared.白噪音类型咖啡厅
-        }
+            case .cafe:   return L10n.shared.白噪音类型咖啡厅
+            case .ocean:  return L10n.shared.白噪音类型海浪
+            case .forest: return L10n.shared.白噪音类型森林
+            case .night:  return L10n.shared.白噪音类型夜晚
+            case .wind:   return L10n.shared.白噪音类型风
+            }
     }
 }
 
@@ -172,7 +182,7 @@ final class AudioService: AudioServiceProtocol {
         // rain / stream / cafe：使用 bundle 内真实录音循环播放
         // white：保持纯代码合成（最简单基底，无需音频文件）
         switch currentWhiteNoiseType {
-        case .rain, .stream, .cafe:
+        case .rain, .stream, .cafe, .ocean, .forest, .night, .wind:
             startAmbientPlayerLocked()
             if ambientPlayer != nil {
                 isWhiteNoisePlayingInternal = true
@@ -226,6 +236,9 @@ final class AudioService: AudioServiceProtocol {
                     last = last * 0.96 + w * 0.04
                     let mod = 0.7 + 0.3 * sin(Float(frame) * 0.01)
                     sample = last * 0.06 * mod
+                default:
+                    // 仅 .white 走合成路径；其余类型均经由 bundle 真实录音播放，不会进入此分支
+                    sample = 0
                 }
                 for buffer in ablPointer {
                     let buf: UnsafeMutableBufferPointer<Float> = UnsafeMutableBufferPointer(buffer)
@@ -277,6 +290,10 @@ final class AudioService: AudioServiceProtocol {
         case .rain:   return "rain"
         case .stream: return "stream"
         case .cafe:   return "cafe"
+        case .ocean:  return "ocean"
+        case .forest: return "forest"
+        case .night:  return "night"
+        case .wind:   return "wind"
         case .white:  return nil
         }
     }

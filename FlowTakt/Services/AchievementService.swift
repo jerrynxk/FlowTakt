@@ -15,6 +15,10 @@ protocol AchievementServiceProtocol: AnyObject {
 // MARK: - 成就服务实现
 
 final class AchievementService: AchievementServiceProtocol {
+    /// 全量拉取时的批大小（修复 2026-10-14 P2）：会话累积到数千条后，
+    /// 一次性 materialize 全部对象会造成主线程尖峰；分批 + 只取统计所需字段可显著降低峰值。
+    private static let fetchBatchSize = 200
+
     private let persistenceController: PersistenceController
 
     /// Streak 计算最大迭代上限（防止死循环）
@@ -25,6 +29,14 @@ final class AchievementService: AchievementServiceProtocol {
 
     private var viewContext: NSManagedObjectContext {
         persistenceController.viewContext
+    }
+    /// save 失败统一上报（判据收口，2026-10-15 审查 P1-001）：
+    /// 所有写路径经此检查，store 未就绪/保存失败时不再静默丢弃。
+    func saveAndReport() {
+        if !persistenceController.save() {
+            onError?(AppError.coreDataSaveFailed(NSError(domain: "FlowTakt.AchievementService",
+                                                         code: NSFileWriteUnknownError)))
+        }
     }
 
     init(persistenceController: PersistenceController) {
@@ -70,10 +82,11 @@ final class AchievementService: AchievementServiceProtocol {
             HapticManager.shared.notificationFeedback(type: .success)
         }
 
-        persistenceController.save()
+        saveAndReport()
     }
 
     func fetchAllAchievements() -> [Achievement] {
+        guard persistenceController.canFetchSafely("AchievementService.fetchAllAchievements") else { return [] }
         let request = Achievement.fetchRequest()
         request.sortDescriptors = [NSSortDescriptor(keyPath: \Achievement.thresholdValue, ascending: true)]
 
@@ -91,6 +104,7 @@ final class AchievementService: AchievementServiceProtocol {
     }
 
     func getTotalPoints() -> Int {
+        guard persistenceController.canFetchSafely("AchievementService.getTotalPoints") else { return 0 }
         let request = FocusSession.fetchRequest()
         // 审查修复（2026-08-12 第二轮）：与 fetchCompletedSessions 对齐，只统计专注阶段积分；
         // 休息阶段完成的 FocusSession.earnedPoints 可能非零，需排除
@@ -111,6 +125,7 @@ final class AchievementService: AchievementServiceProtocol {
     }
 
     func getTodaysPoints() -> Int {
+        guard persistenceController.canFetchSafely("AchievementService.getTodaysPoints") else { return 0 }
         let request = FocusSession.fetchRequest()
         let todayStart = Date().startOfDay
         let todayEnd = Date().endOfDay
@@ -135,6 +150,7 @@ final class AchievementService: AchievementServiceProtocol {
     }
 
     func getUnlockedAchievementCount() -> Int {
+        guard persistenceController.canFetchSafely("AchievementService.getUnlockedAchievementCount") else { return 0 }
         let request = Achievement.fetchRequest()
         request.predicate = NSPredicate(format: "isUnlocked == YES")
 
@@ -153,7 +169,7 @@ final class AchievementService: AchievementServiceProtocol {
         var achievements: [Achievement] = []
         for info in AppConstants.achievements {
             let achievement = Achievement(context: viewContext)
-            achievement.id = UUID()
+            achievement.storageId = UUID()
             achievement.identifier = info.identifier
             achievement.title = info.title
             achievement.descriptionText = info.description
@@ -164,11 +180,12 @@ final class AchievementService: AchievementServiceProtocol {
             achievement.createdAt = Date()
             achievements.append(achievement)
         }
-        persistenceController.save()
+        saveAndReport()
         return achievements
     }
 
     private func fetchCompletedSessions() -> [FocusSession] {
+        guard persistenceController.canFetchSafely("AchievementService.fetchCompletedSessions") else { return [] }
         let request = FocusSession.fetchRequest()
         // 审查修复（2026-08-12）：只统计专注阶段完成会话，短/长休息完成不算番茄数，
         // 否则完成休息也能解锁 first_pomodoro/pomodoros_* 成就
